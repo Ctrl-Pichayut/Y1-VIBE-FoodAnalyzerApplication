@@ -1,0 +1,27 @@
+# Don't copy these into the Docker image — keeps builds fast and avoids
+# leaking dev artifacts / secrets into production.
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Local dev databases (Render uses Postgres via DATABASE_URL)
+*.db
+*.sqlite3
+
+# Secrets — must come from env vars, not the image
+.env
+.env.*
+!.env.example
+
+# Backups / temp uploads
+models/backup/
+models/_upload_*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

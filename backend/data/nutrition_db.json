@@ -1,0 +1,1420 @@
+{
+  "Baked Prawns with Vermicelli": {
+    "calories": 165,
+    "protein": 12.5,
+    "fat": 6.2,
+    "carbs": 15.8,
+    "fiber": 0.3,
+    "sugar": 1.2,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 1.8,
+    "allergens": [
+      "shellfish"
+    ]
+  },
+  "Banana in coconut milk": {
+    "calories": 145,
+    "protein": 1.5,
+    "fat": 5.8,
+    "carbs": 23.5,
+    "fiber": 1.2,
+    "sugar": 16.0,
+    "sodium_mg": 35,
+    "vitamin_c_mg": 3.0,
+    "saturated_fat_g": 4.8,
+    "allergens": []
+  },
+  "Coconut Jelly": {
+    "calories": 92,
+    "protein": 0.8,
+    "fat": 3.5,
+    "carbs": 15.2,
+    "fiber": 0.5,
+    "sugar": 12.0,
+    "sodium_mg": 15,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 3.0,
+    "allergens": []
+  },
+  "Thai-Style Grilled Pork Skewers": {
+    "calories": 210,
+    "protein": 22.0,
+    "fat": 11.5,
+    "carbs": 5.2,
+    "fiber": 0.2,
+    "sugar": 3.8,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 4.2,
+    "allergens": []
+  },
+  "Tub Tim Krob": {
+    "calories": 120,
+    "protein": 1.0,
+    "fat": 2.8,
+    "carbs": 24.0,
+    "fiber": 0.8,
+    "sugar": 18.0,
+    "sodium_mg": 25,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 2.2,
+    "allergens": []
+  },
+  "Wide Rice Noodles with Gravy": {
+    "calories": 142,
+    "protein": 8.5,
+    "fat": 4.2,
+    "carbs": 18.5,
+    "fiber": 0.6,
+    "sugar": 1.5,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 1.5,
+    "saturated_fat_g": 1.5,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Yellow Curry": {
+    "calories": 155,
+    "protein": 8.2,
+    "fat": 9.5,
+    "carbs": 10.8,
+    "fiber": 1.8,
+    "sugar": 3.2,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 4.0,
+    "saturated_fat_g": 6.5,
+    "allergens": []
+  },
+  "Coconut Rice Pancake": {
+    "calories": 185,
+    "protein": 3.2,
+    "fat": 7.5,
+    "carbs": 27.0,
+    "fiber": 0.8,
+    "sugar": 8.5,
+    "sodium_mg": 180,
+    "vitamin_c_mg": 0.3,
+    "saturated_fat_g": 5.8,
+    "allergens": []
+  },
+  "Crab Fried Rice": {
+    "calories": 175,
+    "protein": 9.5,
+    "fat": 6.8,
+    "carbs": 20.5,
+    "fiber": 0.8,
+    "sugar": 1.0,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 1.2,
+    "saturated_fat_g": 1.8,
+    "allergens": [
+      "shellfish",
+      "eggs"
+    ]
+  },
+  "Creps": {
+    "calories": 195,
+    "protein": 5.5,
+    "fat": 8.2,
+    "carbs": 26.0,
+    "fiber": 0.5,
+    "sugar": 6.5,
+    "sodium_mg": 210,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 3.5,
+    "allergens": [
+      "eggs",
+      "gluten"
+    ]
+  },
+  "Crispy Catfish Salad": {
+    "calories": 180,
+    "protein": 15.0,
+    "fat": 9.5,
+    "carbs": 8.5,
+    "fiber": 2.0,
+    "sugar": 4.5,
+    "sodium_mg": 580,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 2.0,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Crispy Pancake": {
+    "calories": 220,
+    "protein": 4.0,
+    "fat": 10.5,
+    "carbs": 28.5,
+    "fiber": 0.5,
+    "sugar": 10.0,
+    "sodium_mg": 195,
+    "vitamin_c_mg": 0.3,
+    "saturated_fat_g": 4.5,
+    "allergens": [
+      "eggs",
+      "gluten"
+    ]
+  },
+  "Crispy Pork Over Rice": {
+    "calories": 195,
+    "protein": 14.5,
+    "fat": 8.5,
+    "carbs": 16.5,
+    "fiber": 0.3,
+    "sugar": 2.0,
+    "sodium_mg": 450,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 3.2,
+    "allergens": []
+  },
+  "Crying Tiger": {
+    "calories": 185,
+    "protein": 21.0,
+    "fat": 9.8,
+    "carbs": 3.5,
+    "fiber": 0.5,
+    "sugar": 1.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 5.0,
+    "saturated_fat_g": 4.0,
+    "allergens": []
+  },
+  "Curried Noodle Soup with Chicken": {
+    "calories": 165,
+    "protein": 10.5,
+    "fat": 8.2,
+    "carbs": 13.5,
+    "fiber": 1.0,
+    "sugar": 2.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 1.5,
+    "saturated_fat_g": 5.5,
+    "allergens": [
+      "gluten"
+    ]
+  },
+  "Deep Fried Sea Bass with Fish Sauce": {
+    "calories": 195,
+    "protein": 18.0,
+    "fat": 11.5,
+    "carbs": 4.5,
+    "fiber": 0.2,
+    "sugar": 1.5,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 2.5,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Basil Fried Rice": {
+    "calories": 175,
+    "protein": 8.0,
+    "fat": 6.5,
+    "carbs": 22.0,
+    "fiber": 1.0,
+    "sugar": 1.2,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 3.0,
+    "saturated_fat_g": 1.8,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Deep Fried Spring Roll": {
+    "calories": 245,
+    "protein": 6.5,
+    "fat": 14.5,
+    "carbs": 22.5,
+    "fiber": 1.2,
+    "sugar": 2.0,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 3.5,
+    "allergens": [
+      "gluten"
+    ]
+  },
+  "Drunken Noodles": {
+    "calories": 165,
+    "protein": 10.0,
+    "fat": 5.8,
+    "carbs": 19.5,
+    "fiber": 1.5,
+    "sugar": 2.5,
+    "sodium_mg": 580,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 1.5,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Egg Custard in Pumpkin": {
+    "calories": 115,
+    "protein": 5.5,
+    "fat": 4.2,
+    "carbs": 14.5,
+    "fiber": 1.5,
+    "sugar": 8.5,
+    "sodium_mg": 120,
+    "vitamin_c_mg": 4.0,
+    "saturated_fat_g": 2.0,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Egg and Pork in Sweet Brown Sauce": {
+    "calories": 155,
+    "protein": 12.0,
+    "fat": 8.5,
+    "carbs": 8.0,
+    "fiber": 0.3,
+    "sugar": 5.5,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 2.8,
+    "allergens": [
+      "eggs",
+      "soy"
+    ]
+  },
+  "Egg with Tamarind Sauce": {
+    "calories": 165,
+    "protein": 10.5,
+    "fat": 9.8,
+    "carbs": 8.5,
+    "fiber": 0.5,
+    "sugar": 5.0,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 1.5,
+    "saturated_fat_g": 3.0,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Fresh Spring Rolls": {
+    "calories": 105,
+    "protein": 5.5,
+    "fat": 1.8,
+    "carbs": 18.0,
+    "fiber": 1.5,
+    "sugar": 3.0,
+    "sodium_mg": 380,
+    "vitamin_c_mg": 5.0,
+    "saturated_fat_g": 0.5,
+    "allergens": [
+      "shellfish"
+    ]
+  },
+  "Fried Cabbage with Fish Sauce": {
+    "calories": 65,
+    "protein": 2.5,
+    "fat": 3.5,
+    "carbs": 6.8,
+    "fiber": 2.0,
+    "sugar": 3.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 28.0,
+    "saturated_fat_g": 0.8,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Fried Egg": {
+    "calories": 196,
+    "protein": 13.6,
+    "fat": 15.3,
+    "carbs": 0.8,
+    "fiber": 0.0,
+    "sugar": 0.4,
+    "sodium_mg": 350,
+    "vitamin_c_mg": 0.0,
+    "saturated_fat_g": 4.2,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Fried Fish-Paste Balls": {
+    "calories": 215,
+    "protein": 12.0,
+    "fat": 12.5,
+    "carbs": 14.0,
+    "fiber": 0.5,
+    "sugar": 2.0,
+    "sodium_mg": 620,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 3.0,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Fried Noodle Thai Style with Prawns": {
+    "calories": 155,
+    "protein": 9.8,
+    "fat": 5.5,
+    "carbs": 18.5,
+    "fiber": 1.0,
+    "sugar": 4.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 3.0,
+    "saturated_fat_g": 1.2,
+    "allergens": [
+      "shellfish",
+      "eggs",
+      "peanuts"
+    ]
+  },
+  "Boat Noodles": {
+    "calories": 125,
+    "protein": 8.5,
+    "fat": 4.8,
+    "carbs": 12.5,
+    "fiber": 0.5,
+    "sugar": 2.0,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 1.8,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Fried Noodle in Soy Sauce": {
+    "calories": 165,
+    "protein": 7.5,
+    "fat": 6.0,
+    "carbs": 21.0,
+    "fiber": 0.8,
+    "sugar": 2.5,
+    "sodium_mg": 620,
+    "vitamin_c_mg": 1.5,
+    "saturated_fat_g": 1.5,
+    "allergens": [
+      "soy",
+      "gluten"
+    ]
+  },
+  "Fried Rice": {
+    "calories": 168,
+    "protein": 6.5,
+    "fat": 5.8,
+    "carbs": 22.5,
+    "fiber": 0.8,
+    "sugar": 1.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 0.8,
+    "saturated_fat_g": 1.5,
+    "allergens": [
+      "eggs",
+      "soy"
+    ]
+  },
+  "Golden Egg Yolk Threads": {
+    "calories": 340,
+    "protein": 6.0,
+    "fat": 8.5,
+    "carbs": 62.0,
+    "fiber": 0.0,
+    "sugar": 55.0,
+    "sodium_mg": 45,
+    "vitamin_c_mg": 0.0,
+    "saturated_fat_g": 2.5,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Green Papaya Salad": {
+    "calories": 55,
+    "protein": 1.8,
+    "fat": 0.5,
+    "carbs": 12.5,
+    "fiber": 2.5,
+    "sugar": 6.5,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 32.0,
+    "saturated_fat_g": 0.1,
+    "allergens": [
+      "shellfish",
+      "fish",
+      "peanuts"
+    ]
+  },
+  "Grilled Chicken": {
+    "calories": 165,
+    "protein": 25.0,
+    "fat": 6.5,
+    "carbs": 1.5,
+    "fiber": 0.0,
+    "sugar": 0.5,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 1.8,
+    "allergens": []
+  },
+  "Grilled Pork Neck Salad": {
+    "calories": 175,
+    "protein": 18.5,
+    "fat": 9.5,
+    "carbs": 4.5,
+    "fiber": 1.0,
+    "sugar": 2.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 12.0,
+    "saturated_fat_g": 3.5,
+    "allergens": []
+  },
+  "Grilled River Prawn": {
+    "calories": 105,
+    "protein": 20.5,
+    "fat": 1.8,
+    "carbs": 0.5,
+    "fiber": 0.0,
+    "sugar": 0.2,
+    "sodium_mg": 380,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 0.4,
+    "allergens": [
+      "shellfish"
+    ]
+  },
+  "Grilled Squid": {
+    "calories": 115,
+    "protein": 18.0,
+    "fat": 2.5,
+    "carbs": 3.5,
+    "fiber": 0.0,
+    "sugar": 0.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 2.5,
+    "saturated_fat_g": 0.6,
+    "allergens": [
+      "shellfish"
+    ]
+  },
+  "Grilled Sticky Rice": {
+    "calories": 195,
+    "protein": 3.5,
+    "fat": 1.2,
+    "carbs": 42.0,
+    "fiber": 0.8,
+    "sugar": 0.5,
+    "sodium_mg": 10,
+    "vitamin_c_mg": 0.0,
+    "saturated_fat_g": 0.3,
+    "allergens": []
+  },
+  "Hot Dog": {
+    "calories": 290,
+    "protein": 10.5,
+    "fat": 24.5,
+    "carbs": 8.5,
+    "fiber": 0.5,
+    "sugar": 3.0,
+    "sodium_mg": 850,
+    "vitamin_c_mg": 0.0,
+    "saturated_fat_g": 9.0,
+    "allergens": [
+      "gluten"
+    ]
+  },
+  "Bua Loy": {
+    "calories": 145,
+    "protein": 2.0,
+    "fat": 4.5,
+    "carbs": 25.0,
+    "fiber": 0.3,
+    "sugar": 15.0,
+    "sodium_mg": 45,
+    "vitamin_c_mg": 0.0,
+    "saturated_fat_g": 3.8,
+    "allergens": []
+  },
+  "Isaan Sausage": {
+    "calories": 235,
+    "protein": 14.0,
+    "fat": 16.5,
+    "carbs": 8.5,
+    "fiber": 0.5,
+    "sugar": 1.5,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 6.0,
+    "allergens": []
+  },
+  "Jungle Curry": {
+    "calories": 95,
+    "protein": 9.5,
+    "fat": 4.5,
+    "carbs": 5.0,
+    "fiber": 2.0,
+    "sugar": 2.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 1.5,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Khanom Buang": {
+    "calories": 225,
+    "protein": 5.5,
+    "fat": 10.0,
+    "carbs": 30.0,
+    "fiber": 0.5,
+    "sugar": 18.0,
+    "sodium_mg": 120,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 5.5,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Lod Chong": {
+    "calories": 135,
+    "protein": 0.5,
+    "fat": 2.8,
+    "carbs": 28.5,
+    "fiber": 0.5,
+    "sugar": 20.0,
+    "sodium_mg": 25,
+    "vitamin_c_mg": 0.3,
+    "saturated_fat_g": 2.2,
+    "allergens": []
+  },
+  "Mango Sticky Rice": {
+    "calories": 175,
+    "protein": 2.8,
+    "fat": 4.5,
+    "carbs": 32.0,
+    "fiber": 1.0,
+    "sugar": 18.0,
+    "sodium_mg": 35,
+    "vitamin_c_mg": 15.0,
+    "saturated_fat_g": 3.5,
+    "allergens": []
+  },
+  "Miang Kham": {
+    "calories": 85,
+    "protein": 2.5,
+    "fat": 4.5,
+    "carbs": 9.5,
+    "fiber": 1.8,
+    "sugar": 4.0,
+    "sodium_mg": 280,
+    "vitamin_c_mg": 5.0,
+    "saturated_fat_g": 2.8,
+    "allergens": [
+      "peanuts"
+    ]
+  },
+  "Omelet": {
+    "calories": 185,
+    "protein": 12.0,
+    "fat": 14.0,
+    "carbs": 2.5,
+    "fiber": 0.2,
+    "sugar": 0.5,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 4.5,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Padthai": {
+    "calories": 155,
+    "protein": 6.8,
+    "fat": 4.2,
+    "carbs": 22.1,
+    "fiber": 1.3,
+    "sugar": 3.1,
+    "sodium_mg": 380,
+    "vitamin_c_mg": 2.1,
+    "saturated_fat_g": 1.1,
+    "allergens": [
+      "shellfish",
+      "eggs",
+      "peanuts",
+      "soy"
+    ]
+  },
+  "Pandan Chicken": {
+    "calories": 215,
+    "protein": 18.5,
+    "fat": 13.5,
+    "carbs": 5.0,
+    "fiber": 0.3,
+    "sugar": 2.0,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 3.5,
+    "allergens": []
+  },
+  "Pineapple Fried Rice": {
+    "calories": 165,
+    "protein": 7.5,
+    "fat": 5.5,
+    "carbs": 22.5,
+    "fiber": 1.2,
+    "sugar": 5.5,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 1.5,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Burger": {
+    "calories": 255,
+    "protein": 14.0,
+    "fat": 12.5,
+    "carbs": 22.0,
+    "fiber": 1.0,
+    "sugar": 4.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 5.5,
+    "allergens": [
+      "gluten",
+      "eggs"
+    ]
+  },
+  "Pizza Slice": {
+    "calories": 266,
+    "protein": 11.0,
+    "fat": 10.0,
+    "carbs": 33.0,
+    "fiber": 2.0,
+    "sugar": 3.5,
+    "sodium_mg": 620,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 4.5,
+    "allergens": [
+      "gluten",
+      "eggs"
+    ]
+  },
+  "Pork Chopped Tofu Soup": {
+    "calories": 65,
+    "protein": 6.5,
+    "fat": 2.8,
+    "carbs": 4.5,
+    "fiber": 0.5,
+    "sugar": 1.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 0.8,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Pork Curry with Morning Glory": {
+    "calories": 105,
+    "protein": 8.5,
+    "fat": 5.5,
+    "carbs": 6.5,
+    "fiber": 1.8,
+    "sugar": 2.0,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 12.0,
+    "saturated_fat_g": 2.5,
+    "allergens": []
+  },
+  "Pork Rib Soup": {
+    "calories": 85,
+    "protein": 7.5,
+    "fat": 4.2,
+    "carbs": 4.5,
+    "fiber": 0.8,
+    "sugar": 1.5,
+    "sodium_mg": 580,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 1.5,
+    "allergens": []
+  },
+  "Pork Satay with Peanut Sauce": {
+    "calories": 195,
+    "protein": 15.0,
+    "fat": 12.0,
+    "carbs": 8.5,
+    "fiber": 1.0,
+    "sugar": 4.5,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 4.0,
+    "allergens": [
+      "peanuts"
+    ]
+  },
+  "Red Curry": {
+    "calories": 145,
+    "protein": 8.0,
+    "fat": 8.5,
+    "carbs": 9.5,
+    "fiber": 1.5,
+    "sugar": 3.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 3.0,
+    "saturated_fat_g": 5.8,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Rice Porridge with Pork": {
+    "calories": 85,
+    "protein": 5.5,
+    "fat": 2.5,
+    "carbs": 11.5,
+    "fiber": 0.2,
+    "sugar": 0.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 0.8,
+    "allergens": []
+  },
+  "River Prawn Spicy Soup": {
+    "calories": 75,
+    "protein": 8.5,
+    "fat": 2.5,
+    "carbs": 5.0,
+    "fiber": 0.8,
+    "sugar": 2.0,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 0.5,
+    "allergens": [
+      "shellfish",
+      "fish"
+    ]
+  },
+  "Roasted Red Pork Over Rice": {
+    "calories": 185,
+    "protein": 14.0,
+    "fat": 6.5,
+    "carbs": 18.5,
+    "fiber": 0.3,
+    "sugar": 4.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 2.5,
+    "allergens": []
+  },
+  "Shrimp Fried Rice": {
+    "calories": 170,
+    "protein": 10.5,
+    "fat": 5.8,
+    "carbs": 20.5,
+    "fiber": 0.8,
+    "sugar": 1.0,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 1.5,
+    "saturated_fat_g": 1.5,
+    "allergens": [
+      "shellfish",
+      "eggs",
+      "soy"
+    ]
+  },
+  "Chiang Mai Curry Noodles": {
+    "calories": 185,
+    "protein": 10.0,
+    "fat": 10.5,
+    "carbs": 14.5,
+    "fiber": 1.0,
+    "sugar": 2.5,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 7.0,
+    "allergens": [
+      "gluten"
+    ]
+  },
+  "Shrimp Paste Fried Rice": {
+    "calories": 175,
+    "protein": 8.5,
+    "fat": 6.5,
+    "carbs": 21.0,
+    "fiber": 1.0,
+    "sugar": 2.5,
+    "sodium_mg": 720,
+    "vitamin_c_mg": 3.0,
+    "saturated_fat_g": 1.8,
+    "allergens": [
+      "shellfish",
+      "eggs"
+    ]
+  },
+  "Son-in-Law Eggs": {
+    "calories": 195,
+    "protein": 11.0,
+    "fat": 12.5,
+    "carbs": 10.0,
+    "fiber": 0.3,
+    "sugar": 6.5,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 3.5,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Sour Soup": {
+    "calories": 55,
+    "protein": 4.5,
+    "fat": 1.5,
+    "carbs": 7.0,
+    "fiber": 1.2,
+    "sugar": 2.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 5.0,
+    "saturated_fat_g": 0.3,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Spicy Glass Noodle Salad": {
+    "calories": 115,
+    "protein": 8.0,
+    "fat": 2.5,
+    "carbs": 16.5,
+    "fiber": 0.5,
+    "sugar": 3.0,
+    "sodium_mg": 620,
+    "vitamin_c_mg": 5.0,
+    "saturated_fat_g": 0.5,
+    "allergens": [
+      "shellfish"
+    ]
+  },
+  "Spicy Minced Pork Salad": {
+    "calories": 145,
+    "protein": 14.5,
+    "fat": 7.5,
+    "carbs": 5.5,
+    "fiber": 1.5,
+    "sugar": 2.0,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 2.5,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Spicy Mixed Vegetable Soup": {
+    "calories": 45,
+    "protein": 2.5,
+    "fat": 1.5,
+    "carbs": 6.5,
+    "fiber": 2.0,
+    "sugar": 2.5,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 15.0,
+    "saturated_fat_g": 0.3,
+    "allergens": []
+  },
+  "Spicy Seafood Salad": {
+    "calories": 95,
+    "protein": 12.0,
+    "fat": 2.5,
+    "carbs": 7.5,
+    "fiber": 1.0,
+    "sugar": 3.0,
+    "sodium_mg": 720,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 0.5,
+    "allergens": [
+      "shellfish",
+      "fish"
+    ]
+  },
+  "Spicy Squid Salad": {
+    "calories": 95,
+    "protein": 14.0,
+    "fat": 2.0,
+    "carbs": 6.5,
+    "fiber": 1.0,
+    "sugar": 2.5,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 0.4,
+    "allergens": [
+      "shellfish"
+    ]
+  },
+  "Steamed Capon in Flavored Rice": {
+    "calories": 195,
+    "protein": 16.5,
+    "fat": 9.5,
+    "carbs": 12.5,
+    "fiber": 0.3,
+    "sugar": 1.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 1.5,
+    "saturated_fat_g": 2.8,
+    "allergens": []
+  },
+  "Steamed Fish with Curry paste": {
+    "calories": 125,
+    "protein": 14.0,
+    "fat": 5.5,
+    "carbs": 5.5,
+    "fiber": 0.8,
+    "sugar": 2.0,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 5.0,
+    "saturated_fat_g": 2.5,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Chicken Green Curry": {
+    "calories": 135,
+    "protein": 10.5,
+    "fat": 7.8,
+    "carbs": 6.5,
+    "fiber": 1.5,
+    "sugar": 2.5,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 5.0,
+    "saturated_fat_g": 5.2,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Sticky Rice with Custard": {
+    "calories": 210,
+    "protein": 4.0,
+    "fat": 5.5,
+    "carbs": 38.0,
+    "fiber": 0.5,
+    "sugar": 15.0,
+    "sodium_mg": 85,
+    "vitamin_c_mg": 0.0,
+    "saturated_fat_g": 3.2,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Stir Fried Chicken with Chestnuts": {
+    "calories": 155,
+    "protein": 14.5,
+    "fat": 6.5,
+    "carbs": 10.5,
+    "fiber": 1.5,
+    "sugar": 2.5,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 1.5,
+    "allergens": []
+  },
+  "Stir Fried Clams with Roasted Chili Paste": {
+    "calories": 115,
+    "protein": 12.5,
+    "fat": 4.5,
+    "carbs": 6.5,
+    "fiber": 0.5,
+    "sugar": 2.5,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 1.0,
+    "allergens": [
+      "shellfish"
+    ]
+  },
+  "Stir Fried Glass Noodles": {
+    "calories": 135,
+    "protein": 6.5,
+    "fat": 4.5,
+    "carbs": 18.5,
+    "fiber": 0.3,
+    "sugar": 1.5,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 1.5,
+    "saturated_fat_g": 1.2,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Stir Fried Morning Glory with Crispy Pork": {
+    "calories": 95,
+    "protein": 5.5,
+    "fat": 5.5,
+    "carbs": 6.5,
+    "fiber": 2.5,
+    "sugar": 1.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 15.0,
+    "saturated_fat_g": 1.8,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Stir Fried Pork with Ginger": {
+    "calories": 145,
+    "protein": 14.0,
+    "fat": 7.5,
+    "carbs": 5.5,
+    "fiber": 0.8,
+    "sugar": 1.5,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 2.5,
+    "allergens": []
+  },
+  "Stir Fried Rice Noodles with Chicken": {
+    "calories": 155,
+    "protein": 10.0,
+    "fat": 5.0,
+    "carbs": 18.5,
+    "fiber": 0.5,
+    "sugar": 1.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 1.2,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Stir Fried Thai Basil with Minced Pork": {
+    "calories": 155,
+    "protein": 13.5,
+    "fat": 8.5,
+    "carbs": 6.0,
+    "fiber": 1.0,
+    "sugar": 1.5,
+    "sodium_mg": 580,
+    "vitamin_c_mg": 5.0,
+    "saturated_fat_g": 3.0,
+    "allergens": []
+  },
+  "Stir-Fried Chinese Morning Glory": {
+    "calories": 55,
+    "protein": 2.8,
+    "fat": 2.5,
+    "carbs": 5.5,
+    "fiber": 2.5,
+    "sugar": 1.5,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 18.0,
+    "saturated_fat_g": 0.5,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Stir-Fried Eggplant with Soybean Paste Sauce": {
+    "calories": 75,
+    "protein": 3.0,
+    "fat": 3.5,
+    "carbs": 8.5,
+    "fiber": 2.5,
+    "sugar": 3.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 3.0,
+    "saturated_fat_g": 0.8,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Chicken Mussaman Curry": {
+    "calories": 165,
+    "protein": 10.0,
+    "fat": 10.5,
+    "carbs": 8.5,
+    "fiber": 1.5,
+    "sugar": 3.5,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 6.5,
+    "allergens": [
+      "peanuts"
+    ]
+  },
+  "Stir-Fried Pumpkin with Eggs": {
+    "calories": 85,
+    "protein": 5.5,
+    "fat": 4.0,
+    "carbs": 8.5,
+    "fiber": 1.5,
+    "sugar": 3.5,
+    "sodium_mg": 320,
+    "vitamin_c_mg": 5.0,
+    "saturated_fat_g": 1.2,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Stuffed Bitter Gourd Broth": {
+    "calories": 55,
+    "protein": 5.0,
+    "fat": 1.8,
+    "carbs": 5.5,
+    "fiber": 1.5,
+    "sugar": 2.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 25.0,
+    "saturated_fat_g": 0.5,
+    "allergens": []
+  },
+  "Sukhothai Noodles": {
+    "calories": 135,
+    "protein": 8.5,
+    "fat": 4.5,
+    "carbs": 16.0,
+    "fiber": 0.8,
+    "sugar": 3.0,
+    "sodium_mg": 580,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 1.0,
+    "allergens": [
+      "peanuts"
+    ]
+  },
+  "Tapioca Balls with Pork Filling": {
+    "calories": 165,
+    "protein": 5.5,
+    "fat": 4.5,
+    "carbs": 27.0,
+    "fiber": 0.3,
+    "sugar": 3.5,
+    "sodium_mg": 380,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 1.5,
+    "allergens": [
+      "peanuts"
+    ]
+  },
+  "Thai BBQ Pork": {
+    "calories": 225,
+    "protein": 18.5,
+    "fat": 14.0,
+    "carbs": 6.5,
+    "fiber": 0.2,
+    "sugar": 4.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 5.5,
+    "allergens": []
+  },
+  "Thai Chicken Biryani": {
+    "calories": 185,
+    "protein": 12.0,
+    "fat": 7.5,
+    "carbs": 18.5,
+    "fiber": 1.0,
+    "sugar": 2.0,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 2.5,
+    "allergens": []
+  },
+  "Thai Chicken Coconut Soup": {
+    "calories": 125,
+    "protein": 8.5,
+    "fat": 7.5,
+    "carbs": 6.5,
+    "fiber": 0.8,
+    "sugar": 2.5,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 3.0,
+    "saturated_fat_g": 5.5,
+    "allergens": [
+      "fish"
+    ]
+  },
+  "Thai Coconut Ice Cream": {
+    "calories": 185,
+    "protein": 2.5,
+    "fat": 10.5,
+    "carbs": 22.0,
+    "fiber": 0.5,
+    "sugar": 18.0,
+    "sodium_mg": 45,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 8.5,
+    "allergens": []
+  },
+  "Thai Corn Fritters": {
+    "calories": 215,
+    "protein": 5.5,
+    "fat": 10.5,
+    "carbs": 26.0,
+    "fiber": 2.0,
+    "sugar": 3.5,
+    "sodium_mg": 380,
+    "vitamin_c_mg": 3.0,
+    "saturated_fat_g": 2.5,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Thai Fish Cakes": {
+    "calories": 175,
+    "protein": 12.5,
+    "fat": 8.5,
+    "carbs": 12.0,
+    "fiber": 1.0,
+    "sugar": 2.0,
+    "sodium_mg": 580,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 2.0,
+    "allergens": [
+      "fish",
+      "eggs"
+    ]
+  },
+  "Chicken Panang": {
+    "calories": 155,
+    "protein": 11.5,
+    "fat": 9.5,
+    "carbs": 5.5,
+    "fiber": 1.0,
+    "sugar": 2.5,
+    "sodium_mg": 420,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 6.0,
+    "allergens": [
+      "peanuts",
+      "fish"
+    ]
+  },
+  "Thai Fried Chicken": {
+    "calories": 250,
+    "protein": 18.0,
+    "fat": 16.5,
+    "carbs": 8.5,
+    "fiber": 0.3,
+    "sugar": 0.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 4.0,
+    "allergens": [
+      "gluten"
+    ]
+  },
+  "Thai Noodle Soup": {
+    "calories": 95,
+    "protein": 6.5,
+    "fat": 2.5,
+    "carbs": 12.5,
+    "fiber": 0.5,
+    "sugar": 1.5,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 1.0,
+    "saturated_fat_g": 0.8,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Thai Oxtail Soup": {
+    "calories": 115,
+    "protein": 10.5,
+    "fat": 5.5,
+    "carbs": 6.0,
+    "fiber": 0.8,
+    "sugar": 1.5,
+    "sodium_mg": 520,
+    "vitamin_c_mg": 2.0,
+    "saturated_fat_g": 2.2,
+    "allergens": []
+  },
+  "Thai Pork Leg Stew": {
+    "calories": 185,
+    "protein": 16.5,
+    "fat": 10.5,
+    "carbs": 6.5,
+    "fiber": 0.5,
+    "sugar": 3.5,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 0.5,
+    "saturated_fat_g": 3.8,
+    "allergens": [
+      "soy"
+    ]
+  },
+  "Thai Pumpkin Custard": {
+    "calories": 125,
+    "protein": 4.5,
+    "fat": 4.0,
+    "carbs": 18.5,
+    "fiber": 1.5,
+    "sugar": 12.0,
+    "sodium_mg": 85,
+    "vitamin_c_mg": 4.0,
+    "saturated_fat_g": 2.5,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Thai Rolled Wafer": {
+    "calories": 385,
+    "protein": 5.0,
+    "fat": 15.0,
+    "carbs": 58.0,
+    "fiber": 0.5,
+    "sugar": 32.0,
+    "sodium_mg": 120,
+    "vitamin_c_mg": 0.0,
+    "saturated_fat_g": 8.5,
+    "allergens": [
+      "eggs",
+      "gluten"
+    ]
+  },
+  "Thai Sour Sausage Salad": {
+    "calories": 165,
+    "protein": 10.5,
+    "fat": 9.5,
+    "carbs": 10.0,
+    "fiber": 1.5,
+    "sugar": 3.0,
+    "sodium_mg": 680,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 3.5,
+    "allergens": []
+  },
+  "Thai Steamed Egg": {
+    "calories": 95,
+    "protein": 7.5,
+    "fat": 6.5,
+    "carbs": 2.5,
+    "fiber": 0.0,
+    "sugar": 0.5,
+    "sodium_mg": 380,
+    "vitamin_c_mg": 0.0,
+    "saturated_fat_g": 2.0,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Thai Sweet Egg Floss": {
+    "calories": 365,
+    "protein": 12.0,
+    "fat": 10.0,
+    "carbs": 58.0,
+    "fiber": 0.0,
+    "sugar": 50.0,
+    "sodium_mg": 65,
+    "vitamin_c_mg": 0.0,
+    "saturated_fat_g": 3.5,
+    "allergens": [
+      "eggs"
+    ]
+  },
+  "Thai Wing Beans Salad": {
+    "calories": 85,
+    "protein": 5.5,
+    "fat": 4.5,
+    "carbs": 6.5,
+    "fiber": 2.5,
+    "sugar": 2.0,
+    "sodium_mg": 480,
+    "vitamin_c_mg": 8.0,
+    "saturated_fat_g": 1.5,
+    "allergens": [
+      "shellfish",
+      "peanuts"
+    ]
+  }
+}

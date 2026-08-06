@@ -1,0 +1,50 @@
+model:
+  path: ./models/best.onnx
+  pt_path: ./models/best.pt
+  confidence_threshold: 0.65
+  iou_threshold: 0.45
+  device: cpu
+  version: "v1.0"
+  classes_file: ./data/food_classes.json
+  input_size: 640
+
+# Hybrid recognition layer — controls how incoming food images are classified.
+#   mode: "gemini" → always use Gemini; "yolo" → always use local YOLO;
+#        "hybrid"  → YOLO first, fall back to Gemini if best confidence
+#                    is below confidence_threshold.
+# Switch to "yolo" for fully-offline operation with zero code changes.
+# The GEMINI_API_KEY env var (see backend/.env.example) must be set whenever
+# mode requires Gemini; otherwise the app auto-degrades to YOLO.
+recognition:
+  mode: "hybrid"
+  model: "gemini-2.5-flash"      # gemini-2.5-flash (stable, free-tier) | gemini-3.5-flash
+  confidence_threshold: 0.65     # hybrid: YOLO best conf below this → try Gemini
+  fuzzy_match_threshold: 0.75    # difflib ratio for Gemini dish_name → nutrition_db
+  request_timeout: 20            # seconds, per Gemini API call
+
+nutritional:
+  db_file: ./data/nutrition_db.json
+  fallback_api: openfoodfacts
+  offline_cache_size: 50
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  cors_origins:
+    - "*"
+  max_upload_size_mb: 10
+
+auth:
+  secret_key: "CHANGE_ME_TO_A_SECURE_RANDOM_STRING"
+  algorithm: HS256
+  access_token_expire_minutes: 30
+  refresh_token_expire_days: 7
+  admin_emails:
+    - "admin@foodanalyzer.app"
+
+database:
+  url: "sqlite:///./food_analyzer.db"
+
+backup:
+  max_versions: 3
+  directory: ./models/backup

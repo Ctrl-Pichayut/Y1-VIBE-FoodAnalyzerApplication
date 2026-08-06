@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Food Intelligence",
+    "slug": "food-intelligence",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.foodintelligence.mobile"
+    },
+    "android": {
+      "package": "app.foodintelligence.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-status-bar"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2c40c3d5-d94a-49ce-a48c-05bbf45e626e"
+      }
+    }
+  }
+}

@@ -11,19 +11,21 @@ from pydantic import BaseModel, EmailStr, Field
 # Auth schemas
 # ---------------------------------------------------------------------------
 class UserRegister(BaseModel):
-    email: str
-    password: str
+    # P7 fix: EmailStr validates email format; password has min length.
+    email: EmailStr
+    password: str = Field(min_length=8, description="Password must be at least 8 characters")
     # Optional body stats — when provided, TDEE targets are computed at signup
     # instead of falling back to generic defaults.
-    weight_kg: Optional[float] = None
-    height_cm: Optional[float] = None
-    age: Optional[int] = None
+    weight_kg: Optional[float] = Field(default=None, ge=1, le=500)
+    height_cm: Optional[float] = Field(default=None, ge=50, le=300)
+    age: Optional[int] = Field(default=None, ge=1, le=150)
     gender: Optional[str] = None        # male, female, other
     activity_level: Optional[str] = None  # sedentary, light, moderate, active, very_active
     goal: Optional[str] = None          # lose, maintain, gain
 
 class UserLogin(BaseModel):
-    email: str
+    # P7 fix: EmailStr for login too.
+    email: EmailStr
     password: str
 
 class TokenResponse(BaseModel):
@@ -39,9 +41,10 @@ class RefreshRequest(BaseModel):
 # Profile schemas
 # ---------------------------------------------------------------------------
 class ProfileUpdate(BaseModel):
-    weight_kg: Optional[float] = None
-    height_cm: Optional[float] = None
-    age: Optional[int] = None
+    # P7 fix: range validation on body stats.
+    weight_kg: Optional[float] = Field(default=None, ge=1, le=500)
+    height_cm: Optional[float] = Field(default=None, ge=50, le=300)
+    age: Optional[int] = Field(default=None, ge=1, le=150)
     gender: Optional[str] = None
     activity_level: Optional[str] = None
     goal: Optional[str] = None
@@ -89,14 +92,27 @@ class DetectedFood(BaseModel):
     tags: List[str]
     allergens: List[str]
     glycemic_index: str
+    bbox: Optional[List[float]] = None
     # Hybrid-recognition provenance (additive — defaults keep older clients
     # and stored history rows valid). source = where the nutrition came from;
     # verified = True means curated nutrition_db data, False = a model estimate.
     source: str = "yolo"          # "yolo" | "gemini" | "nutrition_db"
     verified: bool = True
 
+# P2 fix: Server-side computed meal totals.
+class MealTotals(BaseModel):
+    """Aggregated nutritional totals for a meal, computed server-side."""
+    calories: float = 0
+    protein: float = 0
+    fat: float = 0
+    carbs: float = 0
+    fiber: float = 0
+    sugar: float = 0
+    sodium_mg: float = 0
+
 class AnalyzeResponse(BaseModel):
     foods: List[DetectedFood]
+    totals: MealTotals = Field(default_factory=MealTotals)
     scan_id: str
     timestamp: str
 

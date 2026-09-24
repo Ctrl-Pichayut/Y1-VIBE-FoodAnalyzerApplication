@@ -7,6 +7,7 @@ import {
   TouchableOpacity, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { colors, spacing, radii, getHealthColor } from '../theme/tokens';
 import { getHistory, getDailySummary, deleteMeal } from '../services/api';
 import AppModal, { ModalState } from '../components/AppModal';
@@ -146,25 +147,33 @@ function MealCard({ meal, onOpen, onDelete }: { meal: any; onOpen: () => void; o
   const date = new Date(meal.timestamp).toLocaleDateString();
   const totalCal = meal.totals_json?.calories ? Math.round(meal.totals_json.calories) : 0;
 
-  return (
-    <TouchableOpacity style={styles.card} onPress={onOpen} onLongPress={onDelete} activeOpacity={0.7}>
-      <View style={styles.mealHeader}>
-        <View>
-          <Text style={styles.mealTime}>{time}</Text>
-          <Text style={styles.mealDate}>{date}</Text>
-        </View>
-        <Text style={styles.mealCal}>{totalCal} kcal</Text>
-      </View>
-      {foods.map((f: any, i: number) => (
-        <View key={i} style={styles.mealFoodRow}>
-          <Text style={styles.mealFoodName}>{f.name}</Text>
-          <Text style={[styles.mealFoodScore, { color: getHealthColor(f.health_label) }]}>
-            {f.health_score}
-          </Text>
-        </View>
-      ))}
-      <Text style={styles.tapHint}>Tap to view details · Long-press to delete</Text>
+  const renderRightActions = () => (
+    <TouchableOpacity style={styles.deleteAction} onPress={onDelete}>
+      <Text style={styles.deleteActionText}>Delete</Text>
     </TouchableOpacity>
+  );
+
+  return (
+    <Swipeable renderRightActions={renderRightActions}>
+      <TouchableOpacity style={styles.card} onPress={onOpen} activeOpacity={0.7}>
+        <View style={styles.mealHeader}>
+          <View>
+            <Text style={styles.mealTime}>{time}</Text>
+            <Text style={styles.mealDate}>{date}</Text>
+          </View>
+          <Text style={styles.mealCal}>{totalCal} kcal</Text>
+        </View>
+        {foods.map((f: any, i: number) => (
+          <View key={i} style={styles.mealFoodRow}>
+            <Text style={styles.mealFoodName}>{f.name}</Text>
+            <Text style={[styles.mealFoodScore, { color: getHealthColor(f.health_label) }]}>
+              {f.health_score}
+            </Text>
+          </View>
+        ))}
+        <Text style={styles.tapHint}>Tap to view details · Swipe left to delete</Text>
+      </TouchableOpacity>
+    </Swipeable>
   );
 }
 
@@ -201,4 +210,13 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: spacing.xxl },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
   emptyBody: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm },
+  deleteAction: {
+    backgroundColor: colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    borderRadius: radii.card,
+    marginBottom: spacing.md,
+  },
+  deleteActionText: { color: '#fff', fontWeight: '600' },
 });

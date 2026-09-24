@@ -19,7 +19,12 @@ export default function ScanScreen({ navigation }: any) {
   const [preview, setPreview] = useState<string | null>(null);
   const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
   const [modal, setModal] = useState<ModalState | null>(null);
+  const [facing, setFacing] = useState<'back' | 'front'>('back');
   const cameraRef = useRef<CameraView>(null);
+
+  const toggleCameraFacing = () => {
+    setFacing(current => (current === 'back' ? 'front' : 'back'));
+  };
 
   const handleCameraLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
@@ -101,7 +106,7 @@ export default function ScanScreen({ navigation }: any) {
     content = (
       <View style={styles.container}>
         <View style={styles.cameraArea} onLayout={handleCameraLayout}>
-          <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+          <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} />
 
           {scanFrameStyle && (
             <View
@@ -120,7 +125,9 @@ export default function ScanScreen({ navigation }: any) {
             <View style={styles.captureBtnInner} />
           </TouchableOpacity>
 
-          <View style={styles.controlsSpacer} />
+          <TouchableOpacity style={styles.btnSecondary} onPress={toggleCameraFacing}>
+            <Text style={styles.btnSecondaryText}>Flip</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );

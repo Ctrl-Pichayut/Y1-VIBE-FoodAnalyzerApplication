@@ -28,16 +28,34 @@ export default function ResultScreen({ route, navigation }: any) {
   // Saved meals already have server-side totals; scans compute them on the fly
   const savedTotals = isDetailView ? meal.totals_json : null;
 
-  // --- Save state ----------------------------------------------------------
   const loggedIn = api.isLoggedIn();
   const [saved, setSaved] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
+  
+  // U6: Undo feature
+  const [undoTimer, setUndoTimer] = useState<number>(0);
+  const [savedMealId, setSavedMealId] = useState<number | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
   };
+
+  // U6: Auto-save on mount if logged in
+  useEffect(() => {
+    if (loggedIn && !isDetailView && foods.length > 0 && !saved && !saving) {
+      handleSave();
+    }
+  }, []);
+
+  useEffect(() => {
+    let interval: any;
+    if (undoTimer > 0) {
+      interval = setInterval(() => setUndoTimer(t => t - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [undoTimer]);
 
   const handleSave = async () => {
     if (saving) return;
@@ -57,13 +75,29 @@ export default function ResultScreen({ route, navigation }: any) {
       });
       const roundedTotals = Object.fromEntries(Object.entries(t).map(([k, v]) => [k, Math.round(v)]));
 
-      await api.logMeal(foods, roundedTotals);
+      const res = await api.logMeal(foods, roundedTotals);
+      setSavedMealId(res.id);
       setSaved(true);
-      showToast('Meal saved to history');
+      setUndoTimer(5); // Start 5-second undo timer
+      showToast('Meal saved automatically');
     } catch (e: any) {
       showToast(e.message || 'Failed to save meal');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (savedMealId) {
+      try {
+        await api.deleteMeal(savedMealId);
+        setSaved(false);
+        setSavedMealId(null);
+        setUndoTimer(0);
+        showToast('Save undone');
+      } catch (e: any) {
+        showToast('Failed to undo: ' + e.message);
+      }
     }
   };
 
@@ -119,7 +153,9 @@ export default function ResultScreen({ route, navigation }: any) {
             loggedIn={loggedIn}
             saved={saved}
             saving={saving}
+            undoTimer={undoTimer}
             onSave={handleSave}
+            onUndo={handleUndo}
             onLogIn={() => navigation.navigate('Profile')}
           />}
         </>
@@ -136,13 +172,15 @@ export default function ResultScreen({ route, navigation }: any) {
 }
 
 /**
- * Save button — allows the user to manually save a scanned meal to history.
+ * Save button — allows the user to manually save a scanned meal to history, or undo an auto-save.
  */
-function SaveButton({ loggedIn, saved, saving, onSave, onLogIn }: {
+function SaveButton({ loggedIn, saved, saving, undoTimer, onSave, onUndo, onLogIn }: {
   loggedIn: boolean;
   saved: boolean;
   saving: boolean;
+  undoTimer: number;
   onSave: () => void;
+  onUndo: () => void;
   onLogIn: () => void;
 }) {
   if (!loggedIn) {
@@ -155,8 +193,15 @@ function SaveButton({ loggedIn, saved, saving, onSave, onLogIn }: {
 
   if (saved) {
     return (
-      <View style={[styles.btnSave, styles.btnSaveDone]}>
-        <Text style={styles.btnSaveText}>Saved to history</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm }}>
+        <View style={[styles.btnSave, styles.btnSaveDone, { flex: 1, marginTop: 0 }]}>
+          <Text style={styles.btnSaveText}>✓ Saved to history</Text>
+        </View>
+        {undoTimer > 0 && (
+          <TouchableOpacity style={[styles.btnSave, { marginLeft: spacing.sm, marginTop: 0, paddingHorizontal: 20 }]} onPress={onUndo}>
+            <Text style={styles.btnSaveText}>Undo ({undoTimer}s)</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }

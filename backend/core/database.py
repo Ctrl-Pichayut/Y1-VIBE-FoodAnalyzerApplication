@@ -73,6 +73,9 @@ def sync_schema() -> dict:
 
     report: dict[str, list[str]] = {}
     if not DATABASE_URL.startswith("sqlite"):
+        # P11: sync_schema only supports SQLite. For PostgreSQL (Supabase),
+        # use Alembic migrations. Alembic has now been initialized in this project.
+        # Run `alembic revision --autogenerate -m "Init"` to create migrations.
         return report
 
     inspector = inspect(engine)

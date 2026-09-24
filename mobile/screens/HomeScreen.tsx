@@ -6,7 +6,9 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, ActivityIndicator, RefreshControl,
+  Dimensions
 } from 'react-native';
+import { BarChart } from 'react-native-chart-kit';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, radii, getHealthColor } from '../theme/tokens';
 import * as api from '../services/api';
@@ -17,12 +19,14 @@ export default function HomeScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [weeklyReport, setWeeklyReport] = useState<any>(null);
 
   const loadData = async (isRefresh = false) => {
     try {
-      const [summaryRes, historyRes] = await Promise.all([
+      const [summaryRes, historyRes, reportRes] = await Promise.all([
         api.getDailySummary().catch(() => null),
         api.getHistory(1, 3).catch(() => null),
+        api.getWeeklyReport().catch(() => null),
       ]);
       if (summaryRes) {
         setSummary(summaryRes);
@@ -30,6 +34,9 @@ export default function HomeScreen({ navigation }: any) {
       }
       if (historyRes) {
         setRecentMeals(historyRes.meals || []);
+      }
+      if (reportRes) {
+        setWeeklyReport(reportRes);
       }
     } catch {
       // Not logged in — show default state
@@ -143,26 +150,34 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       )}
 
-      {/* Quick Stats */}
-      <View style={styles.card}>
-        <Text style={styles.sectionLabel}>About</Text>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>AI Model</Text>
-          <Text style={styles.statValue}>YOLOv8n</Text>
+      {/* Weekly Trend Chart */}
+      {loggedIn && weeklyReport?.daily_data && (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>7-Day Calorie Trend</Text>
+          <BarChart
+            data={{
+              labels: weeklyReport.daily_data.map((d: any) => new Date(d.date).toLocaleDateString(undefined, { weekday: 'short' })),
+              datasets: [{ data: weeklyReport.daily_data.map((d: any) => d.totals?.calories || 0) }]
+            }}
+            width={Dimensions.get('window').width - spacing.md * 4}
+            height={220}
+            yAxisLabel=""
+            yAxisSuffix=""
+            chartConfig={{
+              backgroundColor: colors.surface,
+              backgroundGradientFrom: colors.surface,
+              backgroundGradientTo: colors.surface,
+              decimalPlaces: 0,
+              color: (opacity = 1) => `rgba(13, 13, 13, ${opacity})`,
+              labelColor: (opacity = 1) => `rgba(107, 107, 107, ${opacity})`,
+              barPercentage: 0.5,
+              propsForLabels: { fontSize: 10 }
+            }}
+            style={{ marginVertical: 8, borderRadius: radii.card, marginLeft: -10 }}
+            showValuesOnTopOfBars
+          />
         </View>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>Food Classes</Text>
-          <Text style={styles.statValue}>157 Thai dishes</Text>
-        </View>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>Inference</Text>
-          <Text style={styles.statValue}>~200ms</Text>
-        </View>
-        <View style={[styles.statRow, { borderBottomWidth: 0 }]}>
-          <Text style={styles.statLabel}>Data Source</Text>
-          <Text style={styles.statValue}>USDA + Thai DB</Text>
-        </View>
-      </View>
+      )}
     </ScrollView>
   );
 }

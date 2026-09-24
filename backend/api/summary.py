@@ -37,11 +37,13 @@ async def weekly_report(
     week_start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
     meals = db.query(MealLog).filter(MealLog.user_id == current_user.id, MealLog.timestamp >= week_start).order_by(MealLog.timestamp).all()
 
-    daily_data, totals_sum, days_with_data = [], {"calories":0,"protein":0,"fat":0,"carbs":0,"fiber":0}, 0
+    daily_data, totals_sum, days_with_data = [], {"calories":0,"protein":0,"fat":0,"carbs":0,"fiber":0,"sugar":0,"sodium_mg":0}, 0
     for i in range(7):
         day = week_start + timedelta(days=i)
         day_end = day + timedelta(days=1)
-        day_meals = [m for m in meals if day <= m.timestamp.replace(tzinfo=timezone.utc) < day_end]
+        # P10 fix: Normalize timestamps consistently — if stored naive (legacy),
+        # treat as UTC; if already aware, use as-is.
+        day_meals = [m for m in meals if day <= _ensure_utc(m.timestamp) < day_end]
         dt = _aggregate(day_meals)
         daily_data.append({"date": day.strftime("%Y-%m-%d"), "totals": dt, "meals_count": len(day_meals)})
         if day_meals:
@@ -49,12 +51,39 @@ async def weekly_report(
             for k in totals_sum: totals_sum[k] += dt.get(k,0)
 
     avg = {k: round(v/days_with_data,1) for k,v in totals_sum.items()} if days_with_data else {}
-    return {"start_date": week_start.strftime("%Y-%m-%d"), "end_date": now.strftime("%Y-%m-%d"), "daily_data": daily_data, "averages": avg}
+    return {
+        "start_date": week_start.strftime("%Y-%m-%d"), 
+        "end_date": now.strftime("%Y-%m-%d"), 
+        "daily_data": daily_data, 
+        "averages": avg,
+        "daily_targets": calculate_daily_targets(current_user)
+    }
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    """Normalize a datetime to UTC-aware.
+
+    P10 fix: handles both legacy naive datetimes (from datetime.utcnow) and
+    new timezone-aware ones consistently.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _aggregate(meals):
+    """Aggregate nutritional totals from meal logs.
+
+    P2 fix: Falls back to computing totals from foods_json when totals_json
+    is null, preventing meals from silently contributing zero.
+    """
     t = {"calories":0,"protein":0,"fat":0,"carbs":0,"fiber":0,"sugar":0,"sodium_mg":0}
     for m in meals:
-        if m.totals_json:
-            for k in t: t[k] += m.totals_json.get(k,0)
+        meal_totals = m.totals_json
+        if not meal_totals and m.foods_json:
+            # Fallback: compute totals from foods_json
+            from api.analyze import compute_totals
+            meal_totals = compute_totals(m.foods_json)
+        if meal_totals:
+            for k in t: t[k] += meal_totals.get(k,0)
     return {k: round(v,1) for k,v in t.items()}

@@ -1,7 +1,7 @@
 /**
  * ProfileScreen — User profile, daily targets, TDEE settings, and auth.
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useContext } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   TextInput, TouchableOpacity, ActivityIndicator,
@@ -10,15 +10,20 @@ import { useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, radii } from '../theme/tokens';
 import * as api from '../services/api';
 import AppModal, { ModalState } from '../components/AppModal';
+import { AuthContext } from '../App';
 
 const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
 const GOALS = ['lose', 'maintain', 'gain'];
 const GENDERS = ['male', 'female', 'other'];
 
 export default function ProfileScreen({ navigation }: any) {
+  const { setIsAdmin } = useContext(AuthContext);
   const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [showTDEE, setShowTDEE] = useState<boolean>(false);
   const [form, setForm] = useState<any>({});
   const [modal, setModal] = useState<ModalState | null>(null);
 
@@ -59,7 +64,13 @@ export default function ProfileScreen({ navigation }: any) {
 
   const handleLogout = async () => {
     await api.logout();
+    // P9 fix: Reset profile state so the auth form shows immediately,
+    // then navigate to Home. The admin tab resets immediately.
+    setProfile(null);
+    setIsAdmin(false); // U8: hide Admin tab immediately
     setModal({ title: 'Logged out', message: 'You have been logged out' });
+    // Navigate to Home after a brief delay so the modal is visible
+    setTimeout(() => navigation.navigate('Home'), 500);
   };
 
   if (loading) {
@@ -97,6 +108,21 @@ export default function ProfileScreen({ navigation }: any) {
           <TargetItem label="Fat" value={targets.fat} unit="g" />
           <TargetItem label="Carbs" value={targets.carbs} unit="g" />
         </View>
+        
+        {/* U14: TDEE Breakdown */}
+        <TouchableOpacity onPress={() => setShowTDEE(!showTDEE)} style={{ marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center' }}>
+            {showTDEE ? 'Hide calculation breakdown' : 'How are these calculated?'}
+          </Text>
+        </TouchableOpacity>
+        {showTDEE && (
+          <View style={{ marginTop: spacing.sm }}>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 4, lineHeight: 18 }}>• <Text style={{fontWeight:'600'}}>BMR</Text> (Basal Metabolic Rate) uses the Mifflin-St Jeor formula based on your body stats.</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 4, lineHeight: 18 }}>• <Text style={{fontWeight:'600'}}>TDEE</Text> (Total Daily Energy Expenditure) = BMR × your Activity Level multiplier.</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 4, lineHeight: 18 }}>• <Text style={{fontWeight:'600'}}>Goal adjustment</Text>: +/- 20% deficit for loss, 15% surplus for gain.</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 18 }}>• <Text style={{fontWeight:'600'}}>Macros</Text>: Split 25% Protein, 25% Fat, 50% Carbs.</Text>
+          </View>
+        )}
       </View>
 
       {/* Body Stats Card */}
@@ -201,7 +227,8 @@ function AuthForm({ onSuccess, showModal }: { onSuccess: () => void; showModal: 
     setLoading(true);
     try {
       if (isLogin) {
-        await api.login(email, password);
+        const user = await api.login(email, password);
+        setIsAdmin(!!user.is_admin);
       } else {
         await api.register(email, password, {
           weight_kg: parseFloat(form.weight_kg) || undefined,

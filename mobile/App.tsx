@@ -3,7 +3,7 @@
  * Tab navigation: Home | Scan | History | Profile
  * Minimalist design: no icons, text-only tabs.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, createContext } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -11,12 +11,18 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text, View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useFonts } from 'expo-font';
+import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
+import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
+
 import HomeScreen from './screens/HomeScreen';
 import ScanScreen from './screens/ScanScreen';
 import ResultScreen from './screens/ResultScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import AdminScreen from './screens/AdminScreen';
+
+export const AuthContext = createContext<{ isAdmin: boolean; setIsAdmin: (a: boolean) => void }>({ isAdmin: false, setIsAdmin: () => {} });
 import { loadTokens, warmup, getProfile } from './services/api';
 import { colors } from './theme/tokens';
 
@@ -195,6 +201,16 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
+  const [fontsLoaded] = useFonts({
+    Inter_500Medium,
+    Inter_600SemiBold,
+    SpaceGrotesk_700Bold,
+  });
+
+  if (!fontsLoaded) {
+    return null; // Or a splash screen
+  }
+
   if (bootState !== 'ready') {
     return <BootScreen state={bootState} onRetry={() => {
       setBootState('warming');
@@ -203,7 +219,8 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
+    <AuthContext.Provider value={{ isAdmin, setIsAdmin }}>
+      <NavigationContainer>
       <StatusBar style="dark" />
       <Tab.Navigator
         tabBar={(props) => <CustomTabBar {...props} />}
@@ -224,6 +241,7 @@ export default function App() {
         )}
       </Tab.Navigator>
     </NavigationContainer>
+    </AuthContext.Provider>
   );
 }
 

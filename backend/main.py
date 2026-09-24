@@ -13,6 +13,9 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from api.analyze import router as analyze_router
 from api.history import router as history_router
@@ -22,7 +25,8 @@ from api.foods import router as foods_router
 from api.summary import router as summary_router
 from core.model_manager import ModelManager
 from core.gemini_recognizer import GeminiRecognizer
-from core.config import load_config
+from core.nutrition import NutritionService
+from core.config import load_config, get_config
 from core.database import engine, Base, sync_schema
 
 # ---------------------------------------------------------------------------
@@ -89,6 +93,11 @@ async def lifespan(app: FastAPI):
           f"(v{config['model']['version']}, "
           f"{model_manager.class_count} classes)")
 
+    # P6 fix: Initialize NutritionService once at startup (reads and parses
+    # nutrition_db.json). All endpoints access via request.app.state.nutrition_svc.
+    nutrition_svc = NutritionService(BASE_DIR / config["nutritional"]["db_file"])
+    app.state.nutrition_svc = nutrition_svc
+
     # Initialize Gemini recognizer (hybrid recognition layer).
     # Reads GEMINI_API_KEY from env; degrades to disabled if absent, so the
     # app still boots in YOLO-only mode. Recognition mode is config-driven.
@@ -115,8 +124,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow mobile app and dev origins
-config_for_cors = load_config(CONFIG_PATH)
+# P4 fix: Use the cached get_config() instead of redundantly calling
+# load_config() a second time. get_config() is lru_cached so this reads
+# config.yaml exactly once.
+config_for_cors = get_config()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config_for_cors.get("server", {}).get("cors_origins", ["*"]),
@@ -124,6 +135,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# P18 fix: Register slowapi rate-limiting middleware so the @limiter.limit()
+# decorators in profile.py actually enforce request caps.
+from api.profile import limiter as auth_limiter
+app.state.limiter = auth_limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # ---------------------------------------------------------------------------
 # Mount routers

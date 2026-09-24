@@ -1,7 +1,7 @@
 model:
   path: ./models/best.onnx
   pt_path: ./models/best.pt
-  confidence_threshold: 0.65
+  confidence_threshold: 0.25
   iou_threshold: 0.45
   device: cpu
   version: "v1.0"
@@ -30,17 +30,23 @@ nutritional:
 server:
   host: 0.0.0.0
   port: 8000
+  # P17: CORS origins. "*" is fine for development and mobile-only apps.
+  # For production with a web frontend, restrict to specific domains:
+  #   - "https://your-frontend.com"
   cors_origins:
     - "*"
   max_upload_size_mb: 10
 
 auth:
-  secret_key: "CHANGE_ME_TO_A_SECURE_RANDOM_STRING"
+  # secret_key is now read from the SECRET_KEY environment variable.
+  # Set it in .env or your hosting platform (e.g. Render env vars).
+  # Generate with: openssl rand -hex 32
   algorithm: HS256
   access_token_expire_minutes: 30
   refresh_token_expire_days: 7
   admin_emails:
-    - "admin@foodanalyzer.app"
+    # Add admin emails here — these get auto-granted admin on register/login.
+    # - "your-admin@example.com"
 
 database:
   url: "sqlite:///./food_analyzer.db"

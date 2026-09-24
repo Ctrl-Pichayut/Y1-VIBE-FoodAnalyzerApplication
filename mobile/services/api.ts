@@ -3,18 +3,25 @@
  * Manages JWT tokens via SecureStore.
  */
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 
-// Backend URL — selected by build mode:
-//   • Dev (expo start)      → your machine's LAN IP for on-device testing
-//   • Production (EAS APK)  → the deployed Render URL
-//
-// To point a production build at a different backend, edit PROD_BASE_URL
-// below and rebuild the APK. No other code changes required.
-// NOTE: Backend runs on Render; database is on Supabase PostgreSQL.
-const DEV_BASE_URL = 'http://192.168.1.45:8000';
-const PROD_BASE_URL = 'https://foodanalyzer-vbfg.onrender.com';
+// Backend URL — selected dynamically:
+// • EXPO_PUBLIC_API_URL overrides everything if set.
+// • Dev (expo start) dynamically infers the dev server's LAN IP.
+// • Production defaults to the deployed Render URL.
+let DEV_BASE_URL = 'http://localhost:8000';
+if (Constants.expoConfig?.hostUri) {
+  DEV_BASE_URL = `http://${Constants.expoConfig.hostUri.split(':')[0]}:8000`;
+}
+if (process.env.EXPO_PUBLIC_API_URL) {
+  DEV_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+}
 
+const PROD_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://foodanalyzer-vbfg.onrender.com';
 const BASE_URL = __DEV__ ? DEV_BASE_URL : PROD_BASE_URL;
+
+/** P16: Expose BASE_URL for screens that need direct fetch (e.g. warmup). */
+export function getBaseUrl(): string { return BASE_URL; }
 
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
@@ -143,7 +150,14 @@ async function request(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Request failed: ${res.status}`);
+    let errMsg = body.detail || body.error || `Request failed: ${res.status}`;
+    // FastAPI 422 Validation Errors return an array of error objects in `detail`.
+    if (Array.isArray(errMsg)) {
+      errMsg = errMsg.map((e: any) => e.msg || JSON.stringify(e)).join(', ');
+    } else if (typeof errMsg === 'object') {
+      errMsg = JSON.stringify(errMsg);
+    }
+    throw new Error(errMsg);
   }
 
   return res.json();
@@ -198,6 +212,14 @@ export async function login(email: string, password: string) {
 }
 
 export async function logout() {
+  // P8 fix: Call server-side logout to revoke the token before clearing
+  // local storage. If the server call fails (offline, etc.), we still
+  // clear tokens locally so the user isn't stuck.
+  try {
+    await request('/api/v1/auth/logout', { method: 'POST' }, false);
+  } catch {
+    // Server unreachable — token will expire naturally.
+  }
   await clearTokens();
 }
 

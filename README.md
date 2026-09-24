@@ -7,7 +7,7 @@
     ·
     <a href="docs/DEPLOYMENT.md"><strong>Deployment »</strong></a>
     ·
-    <a href="https://github.com/Ctrl-Pichayut/Y1-FoodAnalyzerApplication/issues"><strong>Report Bug »</strong></a>
+    <a href="https://github.com/Ctrl-Pichayut/Y1-VIBE-FoodAnalyzerApplication/issues"><strong>Report Bug »</strong></a>
   </p>
 </p>
 
@@ -112,7 +112,8 @@ FoodAnalyzer/
 │   │   ├── food_classes.json     # 157 YOLO class names
 │   │   └── nutrition_db.json     # Curated per-100g nutrition data
 │   └── models/
-│       └── best.onnx        # Trained YOLOv8n model (not included — see note below)
+│       ├── best.onnx        # Trained YOLOv8n ONNX model (13.7 MB)
+│       └── best.pt          # Trained YOLOv8n PyTorch weights (6.9 MB)
 │
 ├── mobile/
 │   ├── App.tsx              # Navigation (Home → Scan → History → Profile → Admin)
@@ -133,8 +134,6 @@ FoodAnalyzer/
 ├── docker-compose.yml
 └── nginx.conf
 ```
-
-> **Note:** The trained YOLO model file (`best.onnx`, ~13.7 MB) is **not included** in this repository due to its size. To run the backend, place your own trained YOLOv8 ONNX model at `backend/models/best.onnx`. Without it, set `recognition.mode` to `"gemini"` in `config.yaml` to use Gemini-only mode.
 
 ## Getting started
 
@@ -238,10 +237,11 @@ database:
   url: "postgresql://user:pass@host:5432/dbname"
 ```
 
-Secrets go in `backend/.env` (not committed):
-```
+Secrets go in `backend/.env` (copied from `backend/.env.example`, never committed):
+```bash
 GEMINI_API_KEY=your_key_here
-DATABASE_URL=postgresql://...
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
+SECRET_KEY=your-random-secret-key
 ```
 
 ## Admin workflow

@@ -12,7 +12,7 @@ Dish review (promote Gemini estimates into verified nutrition):
 """
 
 import tempfile, shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, UploadFile, Request, HTTPException, Form, Query
 from core.auth import get_admin_user
@@ -153,7 +153,7 @@ async def submit_review(
     # from the status vocabulary ("promoted"/"rejected") that Tier 0 lookup
     # and the stats endpoint filter on.
     row.status = "promoted" if body.action == "promote" else "rejected"
-    row.reviewed_at = datetime.utcnow()
+    row.reviewed_at = datetime.now(timezone.utc)
     row.promoted_by = admin.id
 
     # On promote, optionally accept corrected nutrition from the admin

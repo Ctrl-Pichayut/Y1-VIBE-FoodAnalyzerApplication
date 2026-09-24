@@ -1,13 +1,18 @@
 """
-User profile endpoints + auth (register/login).
+User profile endpoints + auth (register/login/logout).
 GET  /api/v1/profile — User profile + daily targets.
 PUT  /api/v1/profile — Update profile.
 POST /api/v1/auth/register — Create account.
 POST /api/v1/auth/login — Get JWT tokens.
+POST /api/v1/auth/logout — Invalidate current token.
 POST /api/v1/auth/refresh — Refresh access token.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from core.auth import (
@@ -17,7 +22,7 @@ from core.auth import (
 )
 from core.config import get_config
 from core.database import get_db
-from core.models import User
+from core.models import User, RevokedToken
 from core.nutrition import calculate_daily_targets
 from core.schemas import (
     UserRegister, UserLogin, TokenResponse, RefreshRequest,
@@ -25,6 +30,12 @@ from core.schemas import (
 )
 
 router = APIRouter()
+
+# P8: Bearer scheme for logout (needs the raw token)
+_bearer = HTTPBearer()
+
+# P18: Rate limiter for auth endpoints — prevents brute-force and account spam.
+limiter = Limiter(key_func=get_remote_address)
 
 
 def _is_admin_email(email: str) -> bool:
@@ -42,7 +53,8 @@ def _is_admin_email(email: str) -> bool:
 # Auth endpoints
 # ---------------------------------------------------------------------------
 @router.post("/auth/register", response_model=TokenResponse)
-async def register(data: UserRegister, db: Session = Depends(get_db)):
+@limiter.limit("3/hour")
+async def register(request: Request, data: UserRegister, db: Session = Depends(get_db)):
     """Create a new user account. Body stats are optional but, when provided,
     they let daily targets be computed from signup rather than the generic defaults."""
     existing = db.query(User).filter(User.email == data.email).first()
@@ -71,7 +83,8 @@ async def register(data: UserRegister, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-async def login(data: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+async def login(request: Request, data: UserLogin, db: Session = Depends(get_db)):
     """Authenticate and receive JWT tokens."""
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not verify_password(data.password, user.hashed_password):
@@ -88,6 +101,34 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
         access_token=create_access_token({"sub": str(user.id)}),
         refresh_token=create_refresh_token({"sub": str(user.id)}),
     )
+
+
+@router.post("/auth/logout")
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    db: Session = Depends(get_db),
+):
+    """P8 fix: Server-side logout — revokes the current access token.
+
+    The token's JTI (JWT ID) is stored in a revoked_tokens table. The
+    decode_token function checks this table before accepting a token.
+    """
+    try:
+        payload = decode_token(credentials.credentials)
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if jti:
+            # Store the revoked token with its expiry so we can clean up later.
+            revoked = RevokedToken(
+                jti=jti,
+                expires_at=datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None,
+            )
+            db.add(revoked)
+            db.commit()
+    except Exception:
+        pass  # Token already expired or invalid — effectively logged out
+
+    return {"status": "logged_out"}
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)

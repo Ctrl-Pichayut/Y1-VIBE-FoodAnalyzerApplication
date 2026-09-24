@@ -20,8 +20,19 @@ env/
 
 # --- Backend runtime data (dev artifacts, not source) ---
 backend/food_analyzer.db
+food_analyzer.db
 backend/models/backup/
 backend/models/_upload_*
+
+# --- Model binary files ---
+*.onnx
+*.pt
+!backend/models/best.onnx
+!backend/models/best.pt
+
+# --- P14: Database backups with sensitive data ---
+render_backup.json
+*.backup.json
 
 # --- Mobile / Node ---
 mobile/node_modules/

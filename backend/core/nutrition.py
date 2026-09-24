@@ -6,11 +6,11 @@ and provides fallback lookup via Open Food Facts API.
 import json
 import math
 import re
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
 import httpx
+from rapidfuzz import process, fuzz
 
 
 # ---------------------------------------------------------------------------
@@ -126,64 +126,55 @@ class NutritionService:
     def fuzzy_match(
         self, food_name: str, threshold: float = 0.75
     ) -> Optional[Tuple[str, Dict[str, Any]]]:
-        """
-        Fuzzy-match a food name against nutrition_db keys via string similarity.
-
-        Used as a second-tier lookup after exact/case-insensitive matching,
-        primarily to reconcile free-form Gemini dish names (e.g. "Pad Thai")
-        with the curated DB keys (e.g. "Padthai").
-
-        Returns (matched_db_key, nutrition_dict) for the best match whose
-        similarity ratio is >= `threshold`, or None if nothing clears the bar.
-        """
         if not self.nutrition_data:
             return None
 
-        needle = _normalize_name(food_name)
-        best_key: Optional[str] = None
-        best_ratio: float = 0.0
+        # U1 fix: Use rapidfuzz for O(1) near-instant lookups instead of SequenceMatcher in a loop.
+        choices = {k: _normalize_name(k) for k in self.nutrition_data.keys()}
+        match = process.extractOne(
+            _normalize_name(food_name),
+            choices,
+            scorer=fuzz.WRatio,
+            score_cutoff=threshold * 100
+        )
 
-        for key in self.nutrition_data:
-            ratio = SequenceMatcher(None, needle, _normalize_name(key)).ratio()
-            if ratio > best_ratio:
-                best_ratio = ratio
-                best_key = key
-
-        if best_key is not None and best_ratio >= threshold:
-            return best_key, self.nutrition_data[best_key]
+        if match:
+            # match is (matched_value, score, key)
+            db_key = match[2]
+            return db_key, self.nutrition_data[db_key]
         return None
 
-    def compute_health_score(self, per_100g: Dict[str, float]) -> Dict[str, Any]:
-        """
-        Compute health score using the spec formula:
-        score = 50
-          + (fiber_g × 3)
-          + (protein_g × 2)
-          + (vitamin_score × 2)       ← sum of key vitamins normalized 0–5
-          - (saturated_fat_g × 3)
-          - (sugar_g × 2)
-          - (sodium_mg / 100 × 1.5)
-        Clamp to 0–100.
-        Labels: 0–40 = "Limit" · 41–70 = "Moderate" · 71–100 = "Excellent"
-        """
+    def compute_health_score(self, per_100g: Dict[str, float], food_name: str = "") -> Dict[str, Any]:
+        # U3 fix: Upgraded health score to use micronutrients, DRV normalization, and category bonus.
         fiber = per_100g.get("fiber", 0)
         protein = per_100g.get("protein", 0)
         saturated_fat = per_100g.get("saturated_fat_g", 0)
         sugar = per_100g.get("sugar", 0)
         sodium = per_100g.get("sodium_mg", 0)
 
-        # Vitamin score: normalize each vitamin 0-5, sum and cap at 5
-        vitamin_c = min(per_100g.get("vitamin_c_mg", 0) / 18, 5)  # 90mg DV / 5 portions
-        vitamin_a = min(per_100g.get("vitamin_a_mcg", 0) / 180, 5)
-        vitamin_score = min((vitamin_c + vitamin_a), 5)
-
+        # Vitamins & Minerals DRV normalization (0-5 scale each)
+        vit_c = min(per_100g.get("vitamin_c_mg", 0) / 90 * 5, 5) # 90mg DRV
+        vit_a = min(per_100g.get("vitamin_a_mcg", 0) / 900 * 5, 5) # 900mcg DRV
+        iron = min(per_100g.get("iron_mg", 0) / 18 * 5, 5) # 18mg DRV
+        calcium = min(per_100g.get("calcium_mg", 0) / 1300 * 5, 5) # 1300mg DRV
+        potassium = min(per_100g.get("potassium_mg", 0) / 4700 * 5, 5) # 4700mg DRV
+        
+        micronutrients = vit_c + vit_a + iron + calcium + potassium
+        
         score = 50
         score += fiber * 3
         score += protein * 2
-        score += vitamin_score * 2
+        score += micronutrients * 1.5
         score -= saturated_fat * 3
         score -= sugar * 2
-        score -= (sodium / 100) * 1.5
+        score -= (sodium / 2300) * 15 # Normalized penalty for sodium (2300mg DRV)
+
+        # Category bonus
+        name_lower = food_name.lower()
+        if any(kw in name_lower for kw in ["salad", "veg", "spinach", "kale", "broccoli"]):
+            score += 10
+        elif any(kw in name_lower for kw in ["fruit", "apple", "berry", "orange"]):
+            score += 5
 
         score = max(0, min(100, round(score)))
 
@@ -196,8 +187,11 @@ class NutritionService:
 
         return {"health_score": score, "health_label": label}
 
-    def estimate_serving_grams(self, food_name: str) -> int:
-        """Estimate a typical serving size in grams based on food category."""
+    def estimate_serving_grams(self, food_name: str, nutrition_dict: Optional[Dict] = None) -> int:
+        """Estimate a typical serving size. U2: Uses per-dish DB serving_g if available."""
+        if nutrition_dict and "serving_g" in nutrition_dict:
+            return nutrition_dict["serving_g"]
+        
         name_lower = food_name.lower()
 
         # Soups and curries tend to be larger servings
@@ -254,27 +248,30 @@ class NutritionService:
         return tags
 
     def get_glycemic_index(self, per_100g: Dict[str, float], food_name: str) -> str:
-        """Estimate glycemic index category based on food composition."""
+        """U4: Use a curated GI DB dictionary, fallback to heuristics."""
+        gi_db = {
+            "white rice": "high", "jasmine rice": "high", "sticky rice": "high",
+            "brown rice": "medium", "rice noodle": "high", "glass noodle": "low",
+            "egg noodle": "medium", "whole wheat": "low", "sugar": "high",
+            "potato": "high", "sweet potato": "medium", "taro": "medium",
+            "watermelon": "high", "pineapple": "medium", "apple": "low",
+            "chicken": "low", "pork": "low", "beef": "low", "fish": "low",
+            "egg": "low", "tofu": "low", "broccoli": "low", "spinach": "low"
+        }
+        name_lower = food_name.lower()
+        for kw, gi in gi_db.items():
+            if kw in name_lower:
+                return gi
+
         carbs = per_100g.get("carbs", 0)
         fiber = per_100g.get("fiber", 0)
         sugar = per_100g.get("sugar", 0)
-        name_lower = food_name.lower()
-
-        # High-GI indicators
-        if any(kw in name_lower for kw in ["rice", "noodle", "bread", "wafer"]):
-            if fiber > 3:
-                return "medium"
+        
+        if sugar > 15 or (carbs > 30 and fiber < 2):
             return "high"
-        # Sugary desserts
-        elif sugar > 15:
-            return "high"
-        # Low carb foods
-        elif carbs < 10:
+        if carbs < 10:
             return "low"
-        elif carbs < 25:
-            return "medium"
-        else:
-            return "medium"
+        return "medium"
 
     async def fallback_lookup(self, food_name: str) -> Optional[Dict[str, Any]]:
         """

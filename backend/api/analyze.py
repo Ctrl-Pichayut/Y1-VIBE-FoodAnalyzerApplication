@@ -30,11 +30,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, File, UploadFile, Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from PIL import Image
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from core.nutrition import NutritionService
 from core.gemini_recognizer import GeminiRecognizer, GeminiDish, GeminiNutrition
-from core.schemas import AnalyzeResponse, DetectedFood, NutritionPer100g
+from core.schemas import AnalyzeResponse, DetectedFood, NutritionPer100g, MealTotals
 from core.auth import decode_token
 from core.models import User, MealLog, NutritionReview
 from core.database import get_db
@@ -82,7 +83,8 @@ async def analyze_image(
     db: Session = Depends(get_db),
 ):
     """Upload a food image for AI analysis. Returns detected foods with
-    nutritional data, health scores, and per-food provenance (`source`)."""
+    nutritional data, health scores, per-food provenance (`source`),
+    and computed meal totals."""
     # Validate file type
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
@@ -97,13 +99,13 @@ async def analyze_image(
 
     # Shared state from app lifespan
     config = request.app.state.config
-    base_dir = request.app.state.base_dir
     model_manager = request.app.state.model_manager
     gemini: GeminiRecognizer = getattr(
         request.app.state, "gemini_recognizer", None
     )
 
-    nutrition_svc = NutritionService(base_dir / config["nutritional"]["db_file"])
+    # P6 fix: Use the singleton NutritionService from app.state
+    nutrition_svc: NutritionService = request.app.state.nutrition_svc
 
     # --- Detect dishes per the configured mode ----------------------------
     candidates: List[_Candidate] = await _detect(
@@ -113,6 +115,7 @@ async def analyze_image(
     if not candidates:
         return AnalyzeResponse(
             foods=[],
+            totals=MealTotals(),
             scan_id=str(uuid.uuid4()),
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
@@ -124,8 +127,8 @@ async def analyze_image(
             nutrition_svc, gemini, config, cand, db
         )
 
-        health = nutrition_svc.compute_health_score(nutrition)
-        serving_g = cand.serving_g or nutrition_svc.estimate_serving_grams(cand.name)
+        health = nutrition_svc.compute_health_score(nutrition, cand.name)
+        serving_g = cand.serving_g or nutrition_svc.estimate_serving_grams(cand.name, nutrition)
         tags = nutrition_svc.get_tags(nutrition)
         gi = nutrition_svc.get_glycemic_index(nutrition, cand.name)
         allergens = nutrition.get("allergens", [])
@@ -150,6 +153,7 @@ async def analyze_image(
             tags=tags,
             allergens=allergens,
             glycemic_index=gi,
+            bbox=cand.bbox,
             source=source,
             verified=verified,
         ))
@@ -157,7 +161,15 @@ async def analyze_image(
     scan_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
 
-    return AnalyzeResponse(foods=foods, scan_id=scan_id, timestamp=timestamp)
+    # P2 fix: Compute totals server-side so every response includes them.
+    totals = compute_totals([f.model_dump() for f in foods])
+
+    return AnalyzeResponse(
+        foods=foods,
+        totals=MealTotals(**totals),
+        scan_id=scan_id,
+        timestamp=timestamp,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -169,13 +181,14 @@ class _Candidate:
     `origin` records which engine found it so nutrition resolution can decide
     whether a Gemini estimate is an option ("yolo" dishes never ask Gemini).
     """
-    __slots__ = ("name", "confidence", "serving_g", "origin")
+    __slots__ = ("name", "confidence", "serving_g", "origin", "bbox")
 
-    def __init__(self, name: str, confidence: float, serving_g: int, origin: str):
+    def __init__(self, name: str, confidence: float, serving_g: int, origin: str, bbox: Optional[List[float]] = None):
         self.name = name
         self.confidence = confidence
         self.serving_g = serving_g
         self.origin = origin  # "yolo" | "gemini"
+        self.bbox = bbox
 
 
 async def _detect(
@@ -216,7 +229,7 @@ async def _detect(
 def _from_yolo(detections: List[Dict[str, Any]]) -> List[_Candidate]:
     """Convert raw YOLO detections into candidates tagged origin='yolo'."""
     return [
-        _Candidate(name=d["name"], confidence=d["confidence"], serving_g=0, origin="yolo")
+        _Candidate(name=d["name"], confidence=d["confidence"], serving_g=0, origin="yolo", bbox=d.get("bbox"))
         for d in detections
     ]
 
@@ -248,6 +261,7 @@ async def _from_gemini(
             confidence=d.confidence,
             serving_g=d.estimated_serving_g,
             origin="gemini",
+            bbox=None,
         )
         for d in dishes
     ]
@@ -310,9 +324,11 @@ async def _resolve_nutrition(
 def _lookup_promoted(db, dish_name: str) -> Optional[Dict[str, Any]]:
     """Find an admin-promoted NutritionReview row for a dish name.
 
-    Tries exact match, then case-insensitive. Returns the per_100g dict
-    (with allergens merged in) or None.
+    Tries exact match, then SQL-level case-insensitive. Returns the per_100g
+    dict (with allergens merged in) or None.
     """
+    # P5 fix: Use SQL func.lower() for case-insensitive match instead of
+    # loading all promoted rows into Python memory.
     row = (
         db.query(NutritionReview)
         .filter(
@@ -322,14 +338,14 @@ def _lookup_promoted(db, dish_name: str) -> Optional[Dict[str, Any]]:
         .first()
     )
     if row is None:
-        # Case-insensitive fallback
+        # Case-insensitive fallback — single indexed query instead of .all()
         row = (
             db.query(NutritionReview)
-            .filter(NutritionReview.status == "promoted")
-            .all()
-        )
-        row = next(
-            (r for r in row if r.dish_name.lower() == dish_name.lower()), None
+            .filter(
+                NutritionReview.status == "promoted",
+                func.lower(NutritionReview.dish_name) == dish_name.lower(),
+            )
+            .first()
         )
     if row is None:
         return None
@@ -370,8 +386,12 @@ def _capture_for_review(db, dish_name: str, per_100g: Dict[str, Any]) -> None:
         print(f"[review] failed to capture '{dish_name}': {e}")
 
 
-def _compute_totals(foods: list) -> dict:
-    """Aggregate nutritional totals across all detected foods."""
+def compute_totals(foods: list) -> dict:
+    """Aggregate nutritional totals across all detected foods.
+
+    Used both by the /analyze endpoint (P2 fix) and by the /history POST
+    endpoint as a server-side fallback when the client doesn't send totals.
+    """
     totals = {
         "calories": 0, "protein": 0, "fat": 0, "carbs": 0,
         "fiber": 0, "sugar": 0, "sodium_mg": 0,

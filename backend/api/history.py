@@ -61,11 +61,21 @@ async def log_meal(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Manually log a meal."""
+    """Manually log a meal.
+
+    P2 fix: If the client omits totals_json, compute it server-side from
+    foods_json so every meal log always has valid totals (required by
+    daily-summary and weekly-report).
+    """
+    totals = meal.totals_json
+    if totals is None:
+        from api.analyze import compute_totals
+        totals = compute_totals(meal.foods_json)
+
     meal_log = MealLog(
         user_id=current_user.id,
         foods_json=meal.foods_json,
-        totals_json=meal.totals_json,
+        totals_json=totals,
     )
     db.add(meal_log)
     db.commit()

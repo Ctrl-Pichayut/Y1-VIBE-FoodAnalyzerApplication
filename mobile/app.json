@@ -28,11 +28,6 @@
       "expo-secure-store",
       "expo-status-bar",
       "expo-font"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "2c40c3d5-d94a-49ce-a48c-05bbf45e626e"
-      }
-    }
+    ]
   }
 }

@@ -460,7 +460,7 @@ function AuthForm({
 
     if (!password) {
       errs.password = 'Password is required';
-    } else if (password.length < 8) {
+    } else if (!isLogin && password.length < 8) {
       errs.password = 'Password must be at least 8 characters';
     }
 
@@ -567,7 +567,7 @@ function AuthForm({
         <TextInput
           ref={passwordInputRef}
           style={[styles.input, errors.password ? styles.inputError : null]}
-          placeholder="At least 8 characters"
+          placeholder={isLogin ? 'Enter your password' : 'At least 8 characters'}
           placeholderTextColor={colors.textSecondary}
           value={password}
           onChangeText={(v) => {

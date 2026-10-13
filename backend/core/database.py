@@ -22,6 +22,21 @@ DATABASE_URL = os.getenv("DATABASE_URL") or get_config().get(
     "database", {}
 ).get("url", "sqlite:///./food_analyzer.db")
 
+DATABASE_URL = DATABASE_URL.strip().strip("'").strip('"')
+
+if DATABASE_URL.startswith("http://") or DATABASE_URL.startswith("https://"):
+    raise ValueError(
+        "DATABASE_URL cannot be an HTTP(S) URL. You provided a Supabase Project URL "
+        "(e.g. https://xxx.supabase.co) instead of the PostgreSQL Database Connection String. "
+        "Please copy the PostgreSQL connection string (starts with postgresql://) from "
+        "Supabase Dashboard -> Project Settings -> Database -> Connection string -> URI."
+    )
+
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+psycopg2://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+
 # `check_same_thread` is a SQLite-only flag; passing it to other dialects
 # (e.g. PostgreSQL) raises a TypeError. Add it only for SQLite URLs.
 _is_sqlite = DATABASE_URL.startswith("sqlite")

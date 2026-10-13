@@ -15,7 +15,7 @@ import {
   ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors, spacing, radii } from '../theme/tokens';
+import { colors, spacing, radii, fonts } from '../theme/tokens';
 import { getReviewQueue, getReviewStats, submitReview } from '../services/api';
 import AppModal, { ModalState } from '../components/AppModal';
 
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
 
-  title: { fontSize: 32, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.md },
+  title: { fontSize: 32, fontFamily: fonts.display, color: colors.textPrimary, marginBottom: spacing.md },
 
   // Stats row
   statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
@@ -316,10 +316,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, padding: spacing.md, alignItems: 'center',
   },
   statPillActive: { borderColor: colors.textPrimary, borderWidth: 2 },
-  statValue: { fontSize: 24, fontWeight: '700', color: colors.textPrimary },
+  statValue: { fontSize: 24, fontFamily: fonts.display, color: colors.textPrimary },
   statValueActive: { color: colors.textPrimary },
-  statLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  statLabelActive: { color: colors.textPrimary, fontWeight: '600' },
+  statLabel: { fontSize: 12, fontFamily: fonts.bodyMedium, color: colors.textSecondary, marginTop: 2 },
+  statLabelActive: { color: colors.textPrimary, fontFamily: fonts.bodySemiBold },
 
   // Card
   card: {
@@ -328,45 +328,45 @@ const styles = StyleSheet.create({
     padding: spacing.md, marginBottom: spacing.md,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dishName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
-  tag: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  chevron: { fontSize: 24, fontWeight: '400', color: colors.textSecondary },
+  dishName: { fontSize: 18, fontFamily: fonts.display, color: colors.textPrimary },
+  tag: { fontSize: 12, fontFamily: fonts.body, color: colors.textSecondary, marginTop: 2 },
+  chevron: { fontSize: 24, fontFamily: fonts.body, color: colors.textSecondary },
 
   // Collapsed macros
   macroRow: { flexDirection: 'row', marginTop: spacing.sm },
   miniMacro: { flex: 1, alignItems: 'center' },
-  miniValue: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  miniLabel: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+  miniValue: { fontSize: 16, fontFamily: fonts.display, color: colors.textPrimary },
+  miniLabel: { fontSize: 11, fontFamily: fonts.body, color: colors.textSecondary, marginTop: 2 },
 
   // Expanded editor
   editSection: { marginTop: spacing.md },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.xs, marginTop: spacing.sm },
+  fieldLabel: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.textSecondary, marginBottom: spacing.xs, marginTop: spacing.sm },
   fieldGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   numberField: { width: '47%' },
-  numberLabel: { fontSize: 12, color: colors.textSecondary, marginBottom: 2 },
+  numberLabel: { fontSize: 12, fontFamily: fonts.body, color: colors.textSecondary, marginBottom: 2 },
   numberInput: {
     backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
     borderRadius: radii.input, padding: spacing.sm, fontSize: 15,
-    color: colors.textPrimary,
+    fontFamily: fonts.body, color: colors.textPrimary,
   },
   input: {
     backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
     borderRadius: radii.input, padding: spacing.sm, fontSize: 15,
-    color: colors.textPrimary,
+    fontFamily: fonts.body, color: colors.textPrimary,
   },
 
   // Actions
   actionRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   btn: { flex: 1, borderRadius: radii.button, paddingVertical: 14, alignItems: 'center' },
   btnPrimary: { backgroundColor: colors.textPrimary },
-  btnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  btnPrimaryText: { color: '#fff', fontSize: 15, fontFamily: fonts.bodySemiBold },
   btnSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  btnSecondaryText: { color: colors.error, fontSize: 15, fontWeight: '600' },
+  btnSecondaryText: { color: colors.error, fontSize: 15, fontFamily: fonts.bodySemiBold },
 
   // Empty
   empty: { alignItems: 'center', paddingVertical: spacing.xxl, paddingHorizontal: spacing.lg },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
-  emptyBody: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center', lineHeight: 21 },
+  emptyTitle: { fontSize: 20, fontFamily: fonts.display, color: colors.textPrimary },
+  emptyBody: { fontSize: 15, fontFamily: fonts.body, color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center', lineHeight: 21 },
 
   // Toast
   toast: {
@@ -374,5 +374,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.textPrimary, borderRadius: radii.button,
     paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md,
   },
-  toastText: { color: '#fff', fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  toastText: { color: '#fff', fontSize: 14, fontFamily: fonts.bodySemiBold, textAlign: 'center' },
 });

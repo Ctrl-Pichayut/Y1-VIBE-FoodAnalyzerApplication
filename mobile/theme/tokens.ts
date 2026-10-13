@@ -25,6 +25,73 @@ export const fonts = {
   bodySemiBold: 'Inter_600SemiBold',
 };
 
+export const typography = StyleSheet.create({
+  display: {
+    fontFamily: fonts.display,
+    fontSize: 32,
+    lineHeight: 38,
+  },
+  h1: {
+    fontFamily: fonts.display,
+    fontSize: 24,
+    lineHeight: 30,
+  },
+  h2: {
+    fontFamily: fonts.display,
+    fontSize: 18,
+    lineHeight: 24,
+  },
+  number: {
+    fontFamily: fonts.display,
+    fontSize: 28,
+  },
+  numberLg: {
+    fontFamily: fonts.display,
+    fontSize: 48,
+    lineHeight: 52,
+  },
+  numberSm: {
+    fontFamily: fonts.display,
+    fontSize: 20,
+    lineHeight: 24,
+  },
+  body: {
+    fontFamily: fonts.body,
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  bodyMedium: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  bodySemiBold: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  label: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase' as const,
+  },
+  caption: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  captionMedium: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  button: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 16,
+  },
+});
+
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -71,8 +138,8 @@ export const globalStyles = StyleSheet.create({
   },
   buttonPrimaryText: {
     color: colors.surface,
+    fontFamily: fonts.bodySemiBold,
     fontSize: 16,
-    fontWeight: '600' as const,
   },
   buttonSecondary: {
     backgroundColor: colors.surface,
@@ -85,8 +152,8 @@ export const globalStyles = StyleSheet.create({
   },
   buttonSecondaryText: {
     color: colors.textPrimary,
+    fontFamily: fonts.bodySemiBold,
     fontSize: 16,
-    fontWeight: '600' as const,
   },
   input: {
     backgroundColor: colors.surface,
@@ -95,12 +162,13 @@ export const globalStyles = StyleSheet.create({
     borderRadius: radii.input,
     padding: spacing.md,
     fontSize: 16,
+    fontFamily: fonts.body,
     color: colors.textPrimary,
     marginBottom: spacing.md,
   },
   sectionTitle: {
+    fontFamily: fonts.bodySemiBold,
     fontSize: 13,
-    fontWeight: '600' as const,
     color: colors.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 1.2,

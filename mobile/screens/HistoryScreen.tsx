@@ -1,222 +1,604 @@
 /**
- * HistoryScreen — Paginated meal journal with daily summary at top.
+ * HistoryScreen — Paginated meal journal grouped by day with SectionList.
+ * Phase 4: History Polish
+ *
+ * Features:
+ *   • SectionList grouped by day ("Today", "Yesterday", "Mon, 12 Oct") with per-day total kcal.
+ *   • Duplicated daily summary removed (clean, focused meal timeline).
+ *   • Delete discoverability: swipeable action + onLongPress confirmation AppModal.
+ *   • Optimistic delete with 5-second Undo toast.
+ *   • Logged-out state: graceful empty state with "Log In" button (no API errors).
+ *   • Memoized components for SectionHeader, EmptyState, Footer to prevent remounting.
+ *   • Pagination with loadingMore guard.
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, FlatList,
+  View, Text, StyleSheet, SectionList,
   TouchableOpacity, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { colors, spacing, radii, getHealthColor } from '../theme/tokens';
-import { getHistory, getDailySummary, deleteMeal } from '../services/api';
+import * as Haptics from 'expo-haptics';
+import { colors, spacing, radii, getHealthColor, fonts, typography } from '../theme/tokens';
+import { getHistory, deleteMeal, isLoggedIn } from '../services/api';
 import AppModal, { ModalState } from '../components/AppModal';
+
+interface MealSection {
+  title: string;
+  totalKcal: number;
+  data: any[];
+}
 
 export default function HistoryScreen({ navigation }: any) {
   const [meals, setMeals] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [modal, setModal] = useState<ModalState | null>(null);
+  const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
 
-  const fetchData = async (p = 1, refresh = false) => {
+  // Undo toast state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [undoSeconds, setUndoSeconds] = useState(0);
+  const pendingDeleteRef = useRef<{ id: number; item: any; timer: ReturnType<typeof setTimeout> } | null>(null);
+
+  // Undo countdown
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (undoSeconds > 0) {
+      interval = setInterval(() => {
+        setUndoSeconds((s) => {
+          if (s <= 1) {
+            setToastMessage(null);
+            return 0;
+          }
+          return s - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [undoSeconds]);
+
+  const fetchData = async (p = 1, isRefresh = false) => {
+    if (!isLoggedIn()) {
+      setIsUserLoggedIn(false);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    setIsUserLoggedIn(true);
+
     try {
-      const [historyRes, summaryRes] = await Promise.all([
-        getHistory(p),
-        getDailySummary(),
-      ]);
-      if (refresh || p === 1) {
-        setMeals(historyRes.meals);
+      const historyRes = await getHistory(p);
+      if (isRefresh || p === 1) {
+        setMeals(historyRes.meals || []);
       } else {
-        setMeals(prev => [...prev, ...historyRes.meals]);
+        setMeals((prev) => [...prev, ...(historyRes.meals || [])]);
       }
-      setSummary(summaryRes);
       setHasMore(p < historyRes.total_pages);
       setPage(p);
     } catch (e: any) {
-      if (!refresh) setModal({ title: 'Error', message: e.message });
+      if (!isRefresh && p === 1) {
+        setModal({ title: 'Error', message: e.message || 'Failed to load history' });
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
     }
   };
 
-  useFocusEffect(useCallback(() => {
-    setLoading(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoggedIn()) {
+        setIsUserLoggedIn(false);
+        setLoading(false);
+      } else {
+        setIsUserLoggedIn(true);
+        fetchData(1, true);
+      }
+    }, [])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
     fetchData(1, true);
-  }, []));
+  };
 
-  const onRefresh = () => { setRefreshing(true); fetchData(1, true); };
-  const onLoadMore = () => { if (hasMore) fetchData(page + 1); };
+  const onLoadMore = () => {
+    if (!loadingMore && hasMore && !loading && !refreshing) {
+      setLoadingMore(true);
+      fetchData(page + 1);
+    }
+  };
 
-  const handleDelete = (id: number) => {
+  // Group meals by day into sections
+  const sections: MealSection[] = useMemo(() => {
+    const groups: Record<string, { title: string; totalKcal: number; data: any[] }> = {};
+    const todayStr = new Date().toDateString();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toDateString();
+
+    meals.forEach((meal) => {
+      const mealDate = new Date(meal.timestamp);
+      const dateKey = mealDate.toDateString();
+      let title = '';
+      if (dateKey === todayStr) {
+        title = 'Today';
+      } else if (dateKey === yesterdayStr) {
+        title = 'Yesterday';
+      } else {
+        title = mealDate.toLocaleDateString(undefined, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        });
+      }
+
+      if (!groups[dateKey]) {
+        groups[dateKey] = { title, totalKcal: 0, data: [] };
+      }
+      const cal = meal.totals_json?.calories ? Math.round(meal.totals_json.calories) : 0;
+      groups[dateKey].totalKcal += cal;
+      groups[dateKey].data.push(meal);
+    });
+
+    return Object.values(groups);
+  }, [meals]);
+
+  // Optimistic delete with Undo window
+  const handleDeleteConfirm = (meal: any) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
+
     setModal({
-      title: 'Delete meal',
-      message: 'Remove this meal from history?',
+      title: 'Delete Meal',
+      message: 'Are you sure you want to remove this meal from your history?',
       confirm: true,
       destructive: true,
       okLabel: 'Delete',
-      onConfirm: async () => {
-        try {
-          await deleteMeal(id);
-          fetchData(1, true);
-        } catch (e: any) {
-          setModal({ title: 'Error', message: e.message });
-        }
+      cancelLabel: 'Cancel',
+      onConfirm: () => {
+        executeDeleteOptimistic(meal);
       },
     });
   };
 
-  let content;
+  const executeDeleteOptimistic = (meal: any) => {
+    // If a previous delete is pending, flush it now
+    if (pendingDeleteRef.current) {
+      clearTimeout(pendingDeleteRef.current.timer);
+      deleteMeal(pendingDeleteRef.current.id).catch(() => {});
+      pendingDeleteRef.current = null;
+    }
+
+    // Remove from local list immediately
+    setMeals((prev) => prev.filter((m) => m.id !== meal.id));
+
+    // Start 5-second countdown before server call
+    const timer = setTimeout(async () => {
+      try {
+        await deleteMeal(meal.id);
+      } catch (err: any) {
+        console.warn('Failed to delete meal on server:', err);
+      }
+      pendingDeleteRef.current = null;
+    }, 5000);
+
+    pendingDeleteRef.current = { id: meal.id, item: meal, timer };
+    setUndoSeconds(5);
+    setToastMessage('Meal deleted');
+  };
+
+  const handleUndoDelete = () => {
+    if (pendingDeleteRef.current) {
+      clearTimeout(pendingDeleteRef.current.timer);
+      const restored = pendingDeleteRef.current.item;
+      setMeals((prev) => [restored, ...prev].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      pendingDeleteRef.current = null;
+      setUndoSeconds(0);
+      setToastMessage('Meal restored');
+      setTimeout(() => setToastMessage(null), 2000);
+      try {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {}
+    }
+  };
+
+  // Render Section Header
+  const renderSectionHeader = useCallback(
+    ({ section: { title, totalKcal } }: { section: MealSection }) => (
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionKcalTotal}>{totalKcal} kcal</Text>
+      </View>
+    ),
+    []
+  );
+
+  // Render Meal Item
+  const renderItem = useCallback(
+    ({ item }: { item: any }) => (
+      <MealCard
+        meal={item}
+        onOpen={() => navigation.navigate('MealDetail', { meal: item })}
+        onDelete={() => handleDeleteConfirm(item)}
+      />
+    ),
+    [navigation]
+  );
+
+  // Render Empty Component
+  const renderEmpty = useMemo(
+    () => (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyTitle}>No meals logged yet</Text>
+        <Text style={styles.emptyBody}>
+          Scan your first dish to start tracking your daily nutritional history.
+        </Text>
+        <TouchableOpacity
+          style={styles.emptyBtn}
+          onPress={() => navigation.navigate('ScanTab')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.emptyBtnText}>Scan a Meal</Text>
+        </TouchableOpacity>
+      </View>
+    ),
+    [navigation]
+  );
+
+  // Render Footer Component
+  const renderFooter = useMemo(
+    () => (
+      loadingMore ? (
+        <View style={styles.footerLoader}>
+          <ActivityIndicator size="small" color={colors.textPrimary} />
+        </View>
+      ) : (
+        <View style={{ height: spacing.xxl }} />
+      )
+    ),
+    [loadingMore]
+  );
+
+  // --- Logged-out Screen ---
+  if (!isUserLoggedIn) {
+    return (
+      <View style={styles.loggedOutCenter}>
+        <Text style={styles.loggedOutTitle}>Meal History</Text>
+        <Text style={styles.loggedOutBody}>
+          Log in or create an account to view and manage your saved meals and nutritional logs.
+        </Text>
+        <TouchableOpacity
+          style={styles.loggedOutBtn}
+          onPress={() => navigation.navigate('Profile')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.loggedOutBtnText}>Log In to Profile</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // --- Loading Screen ---
   if (loading) {
-    content = <View style={styles.center}><ActivityIndicator size="large" /></View>;
-  } else {
-    content = (
-      <View style={styles.container}>
-        <FlatList
-          data={meals}
-          keyExtractor={(item) => String(item.id)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          onEndReached={onLoadMore}
-          onEndReachedThreshold={0.3}
-          contentContainerStyle={{ padding: spacing.md }}
-          ListHeaderComponent={() => (
-            <View>
-              <Text style={styles.title}>Today</Text>
-              {summary && <DailySummaryCard summary={summary} />}
-              <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Meal history</Text>
-            </View>
-          )}
-          renderItem={({ item }) => (
-            <MealCard meal={item} onOpen={() => navigation.navigate('MealDetail', { meal: item })} onDelete={() => handleDelete(item.id)} />
-          )}
-          ListEmptyComponent={() => (
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No meals yet</Text>
-              <Text style={styles.emptyBody}>Scan your first meal to get started</Text>
-            </View>
-          )}
-        />
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.textPrimary} />
       </View>
     );
   }
 
   return (
-    <>
-      {content}
-      <AppModal state={modal} onClose={() => setModal(null)} />
-    </>
-  );
-}
-
-function DailySummaryCard({ summary }: { summary: any }) {
-  const t = summary.totals || {};
-  const targets = summary.targets || {};
-  const progress = summary.progress || {};
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.summaryRow}>
-        <SummaryItem label="Calories" value={Math.round(t.calories || 0)} target={targets.calories} progress={progress.calories} />
-        <SummaryItem label="Protein" value={Math.round(t.protein || 0)} target={targets.protein} unit="g" progress={progress.protein} />
-        <SummaryItem label="Carbs" value={Math.round(t.carbs || 0)} target={targets.carbs} unit="g" progress={progress.carbs} />
-        <SummaryItem label="Fat" value={Math.round(t.fat || 0)} target={targets.fat} unit="g" progress={progress.fat} />
+    <View style={styles.container}>
+      {/* Tip Banner */}
+      <View style={styles.hintBanner}>
+        <Text style={styles.hintBannerText}>
+          Tip: Swipe left or long-press any meal to delete
+        </Text>
       </View>
-      <Text style={styles.mealsCount}>{summary.meals_count} meal{summary.meals_count !== 1 ? 's' : ''} logged today</Text>
+
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={renderItem}
+        renderSectionHeader={renderSectionHeader}
+        ListEmptyComponent={renderEmpty}
+        ListFooterComponent={renderFooter}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        onEndReached={onLoadMore}
+        onEndReachedThreshold={0.4}
+        contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.xxl }}
+        stickySectionHeadersEnabled={false}
+      />
+
+      {/* Floating Undo Toast */}
+      {toastMessage && (
+        <View style={styles.toastFloating}>
+          <Text style={styles.toastText}>{toastMessage}</Text>
+          {undoSeconds > 0 && (
+            <TouchableOpacity style={styles.toastUndoBtn} onPress={handleUndoDelete}>
+              <Text style={styles.toastUndoText}>Undo ({undoSeconds}s)</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      <AppModal state={modal} onClose={() => setModal(null)} />
     </View>
   );
 }
 
-function SummaryItem({ label, value, target, unit, progress }: any) {
-  const pct = progress || 0;
-  const color = pct > 100 ? colors.error : pct > 80 ? colors.moderate : colors.textPrimary;
-  return (
-    <View style={styles.summaryItem}>
-      <Text style={[styles.summaryValue, { color }]}>{value}</Text>
-      <Text style={styles.summaryTarget}>/ {target}{unit || ''}</Text>
-      <Text style={styles.summaryLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function MealCard({ meal, onOpen, onDelete }: { meal: any; onOpen: () => void; onDelete: () => void }) {
+// ---------------------------------------------------------------------------
+// Swipeable Meal Card
+// ---------------------------------------------------------------------------
+function MealCard({
+  meal,
+  onOpen,
+  onDelete,
+}: {
+  meal: any;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
   const foods = meal.foods_json || [];
   const time = new Date(meal.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const date = new Date(meal.timestamp).toLocaleDateString();
   const totalCal = meal.totals_json?.calories ? Math.round(meal.totals_json.calories) : 0;
 
   const renderRightActions = () => (
-    <TouchableOpacity style={styles.deleteAction} onPress={onDelete}>
+    <TouchableOpacity style={styles.deleteAction} onPress={onDelete} activeOpacity={0.8}>
       <Text style={styles.deleteActionText}>Delete</Text>
     </TouchableOpacity>
   );
 
   return (
     <Swipeable renderRightActions={renderRightActions}>
-      <TouchableOpacity style={styles.card} onPress={onOpen} activeOpacity={0.7}>
+      <TouchableOpacity
+        style={styles.card}
+        onPress={onOpen}
+        onLongPress={onDelete}
+        activeOpacity={0.7}
+      >
         <View style={styles.mealHeader}>
-          <View>
-            <Text style={styles.mealTime}>{time}</Text>
-            <Text style={styles.mealDate}>{date}</Text>
-          </View>
+          <Text style={styles.mealTime}>{time}</Text>
           <Text style={styles.mealCal}>{totalCal} kcal</Text>
         </View>
-        {foods.map((f: any, i: number) => (
+
+        {foods.slice(0, 3).map((f: any, i: number) => (
           <View key={i} style={styles.mealFoodRow}>
-            <Text style={styles.mealFoodName}>{f.name}</Text>
+            <Text style={styles.mealFoodName} numberOfLines={1}>
+              {f.name}
+            </Text>
             <Text style={[styles.mealFoodScore, { color: getHealthColor(f.health_label) }]}>
               {f.health_score}
             </Text>
           </View>
         ))}
-        <Text style={styles.tapHint}>Tap to view details · Swipe left to delete</Text>
+
+        {foods.length > 3 && (
+          <Text style={styles.moreText}>+{foods.length - 3} more dishes</Text>
+        )}
       </TouchableOpacity>
     </Swipeable>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
-  title: { fontSize: 32, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.md },
-  sectionLabel: {
-    fontSize: 13, fontWeight: '600', color: colors.textSecondary,
-    letterSpacing: 0.3, marginBottom: spacing.sm,
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  hintBanner: {
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    alignItems: 'center',
+  },
+  hintBannerText: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+    paddingHorizontal: 2,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+  },
+  sectionKcalTotal: {
+    fontSize: 13,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textSecondary,
   },
   card: {
-    backgroundColor: colors.surface, borderRadius: radii.card,
-    borderWidth: 1, borderColor: colors.border,
-    padding: spacing.md, marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
   },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  summaryItem: { alignItems: 'center', flex: 1 },
-  summaryValue: { fontSize: 24, fontWeight: '700' },
-  summaryTarget: { fontSize: 11, color: colors.textSecondary },
-  summaryLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  mealsCount: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.md },
-  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
-  mealTime: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  mealDate: { fontSize: 12, color: colors.textSecondary },
-  mealCal: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+  mealHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  mealTime: {
+    fontSize: 14,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
+  },
+  mealCal: {
+    fontSize: 16,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+  },
   mealFoodRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 4, borderTopWidth: 1, borderTopColor: colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 5,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  mealFoodName: { fontSize: 14, color: colors.textPrimary },
-  mealFoodScore: { fontSize: 16, fontWeight: '700' },
-  tapHint: { fontSize: 11, color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center' },
-  empty: { alignItems: 'center', paddingVertical: spacing.xxl },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
-  emptyBody: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm },
+  mealFoodName: {
+    fontSize: 14,
+    fontFamily: fonts.body,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  mealFoodScore: {
+    fontSize: 15,
+    fontFamily: fonts.display,
+    marginLeft: spacing.sm,
+  },
+  moreText: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
   deleteAction: {
-    backgroundColor: colors.error,
+    backgroundColor: colors.limit,
     justifyContent: 'center',
     alignItems: 'center',
     width: 80,
+    marginBottom: spacing.sm,
     borderRadius: radii.card,
-    marginBottom: spacing.md,
+    marginLeft: spacing.xs,
   },
-  deleteActionText: { color: '#fff', fontWeight: '600' },
+  deleteActionText: {
+    color: '#FFFFFF',
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 14,
+  },
+  footerLoader: {
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+
+  // Empty State
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  emptyBody: {
+    fontSize: 14,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.lg,
+  },
+  emptyBtn: {
+    backgroundColor: colors.textPrimary,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.button,
+  },
+  emptyBtnText: {
+    color: '#FFFFFF',
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 14,
+  },
+
+  // Logged-out State
+  loggedOutCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
+  loggedOutTitle: {
+    fontSize: 24,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  loggedOutBody: {
+    fontSize: 15,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: spacing.xl,
+  },
+  loggedOutBtn: {
+    backgroundColor: colors.textPrimary,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.button,
+  },
+  loggedOutBtnText: {
+    color: '#FFFFFF',
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 15,
+  },
+
+  // Floating Toast
+  toastFloating: {
+    position: 'absolute',
+    bottom: spacing.lg,
+    left: spacing.md,
+    right: spacing.md,
+    backgroundColor: colors.textPrimary,
+    borderRadius: radii.card,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  toastText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: fonts.bodyMedium,
+  },
+  toastUndoBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radii.button,
+  },
+  toastUndoText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontFamily: fonts.bodySemiBold,
+  },
 });

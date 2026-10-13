@@ -7,18 +7,18 @@ import Constants from 'expo-constants';
 
 // Backend URL — selected dynamically:
 // • EXPO_PUBLIC_API_URL overrides everything if set.
-// • Dev (expo start) dynamically infers the dev server's LAN IP.
-// • Production defaults to the deployed Render URL.
-let DEV_BASE_URL = 'http://localhost:8000';
-if (Constants.expoConfig?.hostUri) {
-  DEV_BASE_URL = `http://${Constants.expoConfig.hostUri.split(':')[0]}:8000`;
-}
-if (process.env.EXPO_PUBLIC_API_URL) {
-  DEV_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+// • Default: live deployed Render backend (works out of the box).
+// • If EXPO_PUBLIC_USE_LOCAL is set, connects to local port 8000.
+const LIVE_BACKEND_URL = 'https://foodanalyzer-api-t9i6.onrender.com';
+
+let resolvedUrl = process.env.EXPO_PUBLIC_API_URL || LIVE_BACKEND_URL;
+if (!process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_USE_LOCAL === '1') {
+  resolvedUrl = Constants.expoConfig?.hostUri
+    ? `http://${Constants.expoConfig.hostUri.split(':')[0]}:8000`
+    : 'http://localhost:8000';
 }
 
-const PROD_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://foodanalyzer-api-t9i6.onrender.com';
-const BASE_URL = __DEV__ ? DEV_BASE_URL : PROD_BASE_URL;
+const BASE_URL = resolvedUrl;
 
 /** P16: Expose BASE_URL for screens that need direct fetch (e.g. warmup). */
 export function getBaseUrl(): string { return BASE_URL; }
@@ -231,8 +231,24 @@ export async function logout() {
 // (recognition + nutrition estimation) that each take 10-20s.
 // Auto-retry: 1 retry on timeout/network error before surfacing the error.
 // ---------------------------------------------------------------------------
-function _doAnalyzeXHR(imageUri: string, timeoutMs: number): Promise<any> {
+export class AbortError extends Error {
+  constructor(msg = 'Analysis cancelled') { super(msg); this.name = 'AbortError'; }
+}
+
+class RetryableError extends Error {
+  constructor(msg: string) { super(msg); this.name = 'RetryableError'; }
+}
+
+function _doAnalyzeXHR(
+  imageUri: string,
+  timeoutMs: number,
+  options?: { onProgress?: (pct: number) => void; signal?: AbortSignal }
+): Promise<any> {
   return new Promise((resolve, reject) => {
+    if (options?.signal?.aborted) {
+      return reject(new AbortError());
+    }
+
     const filename = imageUri.split('/').pop() || 'photo.jpg';
     const ext = filename.split('.').pop()?.toLowerCase();
     const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
@@ -251,7 +267,35 @@ function _doAnalyzeXHR(imageUri: string, timeoutMs: number): Promise<any> {
       xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
     }
 
+    if (options?.onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          const pct = Math.min(99, Math.round((event.loaded / event.total) * 100));
+          options.onProgress?.(pct);
+        } else if (event.loaded > 0) {
+          options.onProgress?.(75);
+        }
+      };
+
+      xhr.upload.onload = () => {
+        options.onProgress?.(100);
+      };
+      xhr.upload.onloadend = () => {
+        options.onProgress?.(100);
+      };
+    }
+
+    const onAbort = () => {
+      xhr.abort();
+      reject(new AbortError());
+    };
+
+    if (options?.signal) {
+      options.signal.addEventListener('abort', onAbort);
+    }
+
     xhr.onload = () => {
+      if (options?.signal) options.signal.removeEventListener('abort', onAbort);
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           resolve(JSON.parse(xhr.responseText));
@@ -271,32 +315,49 @@ function _doAnalyzeXHR(imageUri: string, timeoutMs: number): Promise<any> {
       }
     };
 
-    xhr.onerror = () => reject(new RetryableError('Network error — retrying'));
-    xhr.ontimeout = () => reject(new RetryableError('Analysis taking longer than expected — retrying'));
+    xhr.onerror = () => {
+      if (options?.signal) options.signal.removeEventListener('abort', onAbort);
+      reject(new RetryableError('Network error — retrying'));
+    };
+    xhr.ontimeout = () => {
+      if (options?.signal) options.signal.removeEventListener('abort', onAbort);
+      reject(new RetryableError('Analysis taking longer than expected — retrying'));
+    };
+    xhr.onabort = () => {
+      if (options?.signal) options.signal.removeEventListener('abort', onAbort);
+      reject(new AbortError());
+    };
     xhr.timeout = timeoutMs;
 
     xhr.send(formData);
   });
 }
 
-class RetryableError extends Error {
-  constructor(msg: string) { super(msg); this.name = 'RetryableError'; }
-}
+export async function analyzeImage(
+  imageUri: string,
+  options?: { onProgress?: (pct: number) => void; signal?: AbortSignal }
+): Promise<any> {
+  if (options?.signal?.aborted) throw new AbortError();
 
-export async function analyzeImage(imageUri: string): Promise<any> {
   // First attempt: 90s timeout
   try {
-    return await _doAnalyzeXHR(imageUri, 90000);
+    return await _doAnalyzeXHR(imageUri, 90000, options);
   } catch (e: any) {
+    if (e.name === 'AbortError') throw e;
     if (e.name !== 'RetryableError') throw e;
     console.log(`[analyze] ${e.message}`);
   }
 
+  if (options?.signal?.aborted) throw new AbortError();
+
   // Retry once after a short pause (handles cold starts + transient errors)
   await new Promise(r => setTimeout(r, 2000));
+  if (options?.signal?.aborted) throw new AbortError();
+
   try {
-    return await _doAnalyzeXHR(imageUri, 90000);
+    return await _doAnalyzeXHR(imageUri, 90000, options);
   } catch (e: any) {
+    if (e.name === 'AbortError') throw e;
     if (e.name === 'RetryableError') {
       throw new Error('Analysis timed out — the server may be busy. Please try again.');
     }

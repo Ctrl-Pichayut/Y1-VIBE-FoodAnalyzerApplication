@@ -24,7 +24,7 @@ import {
   Modal, View, Text, StyleSheet, TouchableOpacity,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { colors, spacing, radii } from '../theme/tokens';
+import { colors, spacing, radii, fonts } from '../theme/tokens';
 
 export interface ModalState {
   title: string;
@@ -124,15 +124,17 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   title: {
+    fontFamily: fonts.display,
     fontSize: 18,
-    fontWeight: '700',
+    lineHeight: 24,
     color: colors.textPrimary,
     marginBottom: spacing.xs,
   },
   message: {
+    fontFamily: fonts.body,
     fontSize: 15,
-    color: colors.textSecondary,
     lineHeight: 21,
+    color: colors.textSecondary,
     marginBottom: spacing.lg,
   },
   actions: {
@@ -167,8 +169,8 @@ const styles = StyleSheet.create({
   },
   btnPrimaryText: {
     color: colors.surface,
+    fontFamily: fonts.bodySemiBold,
     fontSize: 15,
-    fontWeight: '600',
   },
   // Outlined secondary (matches app's buttonSecondary token)
   btnSecondary: {
@@ -178,8 +180,8 @@ const styles = StyleSheet.create({
   },
   btnSecondaryText: {
     color: colors.textPrimary,
+    fontFamily: fonts.bodySemiBold,
     fontSize: 15,
-    fontWeight: '600',
   },
   // Destructive variant — same shape, error red
   btnDestructive: {

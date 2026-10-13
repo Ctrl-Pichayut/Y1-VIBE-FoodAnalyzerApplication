@@ -10,10 +10,24 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text, View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useFonts } from 'expo-font';
-import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
-import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
+import * as SplashScreen from 'expo-splash-screen';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+} from '@expo-google-fonts/inter';
+import {
+  SpaceGrotesk_500Medium,
+  SpaceGrotesk_700Bold,
+} from '@expo-google-fonts/space-grotesk';
+
+import { AuthContext } from './context/AuthContext';
+export { AuthContext };
+
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 import HomeScreen from './screens/HomeScreen';
 import ScanScreen from './screens/ScanScreen';
@@ -22,17 +36,16 @@ import HistoryScreen from './screens/HistoryScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import AdminScreen from './screens/AdminScreen';
 
-export const AuthContext = createContext<{ isAdmin: boolean; setIsAdmin: (a: boolean) => void }>({ isAdmin: false, setIsAdmin: () => {} });
 import { loadTokens, warmup, getProfile } from './services/api';
-import { colors } from './theme/tokens';
+import { colors, fonts, typography } from './theme/tokens';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 const headerStyle = {
-  headerStyle: { backgroundColor: '#FAFAF9' },
+  headerStyle: { backgroundColor: colors.background },
   headerShadowVisible: false,
-  headerTitleStyle: { fontWeight: '700' as const, fontSize: 18, color: '#0D0D0D' },
+  headerTitleStyle: { fontFamily: fonts.display, fontSize: 18, color: colors.textPrimary },
 };
 
 function ScanStack() {
@@ -102,18 +115,35 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
           }
         };
 
+        const isScan = route.name === 'ScanTab';
+
         return (
           <Pressable
             key={route.key}
             onPress={onPress}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isFocused }}
+            accessibilityLabel={label}
             style={({ pressed }) => [
               tabStyles.tab,
               pressed && tabStyles.tabPressed,
             ]}
             android_ripple={{ color: 'transparent' }}
           >
-            <View style={[tabStyles.pill, isFocused && tabStyles.pillActive]}>
-              <Text style={[tabStyles.label, isFocused && tabStyles.labelActive]}>
+            <View
+              style={[
+                tabStyles.pill,
+                isScan && tabStyles.scanPill,
+                isFocused && tabStyles.pillActive,
+              ]}
+            >
+              <Text
+                style={[
+                  tabStyles.label,
+                  isScan && tabStyles.scanLabel,
+                  isFocused && tabStyles.labelActive,
+                ]}
+              >
                 {label}
               </Text>
             </View>
@@ -129,8 +159,8 @@ const tabStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: '#FFFFFF',
-    borderTopColor: '#EBEBEB',
+    backgroundColor: colors.surface,
+    borderTopColor: colors.border,
     borderTopWidth: 1,
     paddingTop: 8,
     paddingHorizontal: 8,
@@ -151,24 +181,28 @@ const tabStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Filled dark pill behind the active tab — unmistakable "you are here".
-  // NOTE: borderRadius + overflow are repeated here (not inherited from
-  // `pill`) because Android's native style resolver can drop inherited
-  // properties when merging an array style [pill, pillActive] that adds a
-  // backgroundColor — which previously made the active tab render as a
-  // sharp rectangle instead of a pill. Defining them explicitly fixes that.
+  scanPill: {
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    paddingHorizontal: 18,
+  },
   pillActive: {
-    backgroundColor: '#0D0D0D',
+    backgroundColor: colors.textPrimary,
     borderRadius: 999,
     overflow: 'hidden',
   },
   label: {
+    fontFamily: fonts.bodyMedium,
     fontSize: 13,
-    fontWeight: '500',
-    color: '#6B6B6B',
+    color: colors.textSecondary,
+  },
+  scanLabel: {
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
   },
   labelActive: {
-    fontWeight: '700',
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
     color: '#FFFFFF',
   },
 });
@@ -201,47 +235,63 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
+    SpaceGrotesk_500Medium,
     SpaceGrotesk_700Bold,
   });
 
-  if (!fontsLoaded) {
-    return null; // Or a splash screen
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded, fontError]);
+
+  if (!fontsLoaded && !fontError) {
+    return null;
   }
 
   if (bootState !== 'ready') {
-    return <BootScreen state={bootState} onRetry={() => {
-      setBootState('warming');
-      warmup().then((ok) => setBootState(ok ? 'ready' : 'offline'));
-    }} />;
+    return (
+      <BootScreen
+        state={bootState}
+        onRetry={() => {
+          setBootState('warming');
+          warmup().then((ok) => setBootState(ok ? 'ready' : 'offline'));
+        }}
+        onBypass={() => setBootState('ready')}
+      />
+    );
   }
 
   return (
-    <AuthContext.Provider value={{ isAdmin, setIsAdmin }}>
-      <NavigationContainer>
-      <StatusBar style="dark" />
-      <Tab.Navigator
-        tabBar={(props) => <CustomTabBar {...props} />}
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        <Tab.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ title: 'Home', headerShown: true, headerTitle: 'Food Intelligence', ...headerStyle }}
-        />
-        <Tab.Screen name="ScanTab" component={ScanStack} options={{ tabBarLabel: 'Scan' }} />
-        <Tab.Screen name="History" component={HistoryStack} options={{ tabBarLabel: 'History' }} />
-        <Tab.Screen name="Profile" component={ProfileStack} options={{ tabBarLabel: 'Profile' }} />
-        {isAdmin && (
-          <Tab.Screen name="Admin" component={AdminStack} options={{ tabBarLabel: 'Admin' }} />
-        )}
-      </Tab.Navigator>
-    </NavigationContainer>
-    </AuthContext.Provider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthContext.Provider value={{ isAdmin, setIsAdmin }}>
+        <NavigationContainer>
+          <StatusBar style="dark" />
+          <Tab.Navigator
+            tabBar={(props) => <CustomTabBar {...props} />}
+            screenOptions={{
+              headerShown: false,
+            }}
+          >
+            <Tab.Screen
+              name="Home"
+              component={HomeScreen}
+              options={{ title: 'Home', headerShown: false }}
+            />
+            <Tab.Screen name="ScanTab" component={ScanStack} options={{ tabBarLabel: 'Scan' }} />
+            <Tab.Screen name="History" component={HistoryStack} options={{ tabBarLabel: 'History' }} />
+            <Tab.Screen name="Profile" component={ProfileStack} options={{ tabBarLabel: 'Profile' }} />
+            {isAdmin && (
+              <Tab.Screen name="Admin" component={AdminStack} options={{ tabBarLabel: 'Admin' }} />
+            )}
+          </Tab.Navigator>
+        </NavigationContainer>
+      </AuthContext.Provider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -249,27 +299,49 @@ export default function App() {
  * Boot screen — shown while the backend wakes from sleep, or if it can't be
  * reached. Keeps the user informed instead of showing frozen screens.
  */
-function BootScreen({ state, onRetry }: { state: 'warming' | 'offline'; onRetry: () => void }) {
+function BootScreen({
+  state,
+  onRetry,
+  onBypass,
+}: {
+  state: 'warming' | 'offline';
+  onRetry: () => void;
+  onBypass: () => void;
+}) {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <View style={bootStyles.container}>
       {state === 'warming' ? (
         <>
           <ActivityIndicator size="large" color={colors.textPrimary} />
-          <Text style={bootStyles.title}>Waking up server...</Text>
-          <Text style={bootStyles.body}>
-            The first open after a few minutes may take 30-60 seconds while the
-            server starts up. Thanks for your patience.
+          <Text style={bootStyles.title}>
+            Waking up server... {seconds > 0 ? `(${seconds}s)` : ''}
           </Text>
+          <Text style={bootStyles.body}>
+            Render free-tier instances sleep after 15 min idle. It takes 20-40 seconds while the AI model loads.
+          </Text>
+          <Pressable style={bootStyles.bypassBtn} onPress={onBypass}>
+            <Text style={bootStyles.bypassBtnText}>Continue offline</Text>
+          </Pressable>
         </>
       ) : (
         <>
           <Text style={bootStyles.title}>Can't reach server</Text>
           <Text style={bootStyles.body}>
             Check your internet connection and try again. If the problem
-            persists, the server may be redeploying.
+            persists, the server may be waking up.
           </Text>
           <Pressable style={bootStyles.retryBtn} onPress={onRetry}>
             <Text style={bootStyles.retryBtnText}>Try again</Text>
+          </Pressable>
+          <Pressable style={bootStyles.bypassBtn} onPress={onBypass}>
+            <Text style={bootStyles.bypassBtnText}>Continue offline</Text>
           </Pressable>
         </>
       )}
@@ -286,13 +358,15 @@ const bootStyles = StyleSheet.create({
     padding: 32,
   },
   title: {
+    fontFamily: fonts.display,
     fontSize: 20,
-    fontWeight: '700',
+    lineHeight: 26,
     color: colors.textPrimary,
     marginTop: 24,
     marginBottom: 8,
   },
   body: {
+    fontFamily: fonts.body,
     fontSize: 15,
     color: colors.textSecondary,
     textAlign: 'center',
@@ -307,7 +381,18 @@ const bootStyles = StyleSheet.create({
   },
   retryBtnText: {
     color: '#fff',
+    fontFamily: fonts.bodySemiBold,
     fontSize: 16,
-    fontWeight: '600',
+  },
+  bypassBtn: {
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  bypassBtnText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 });

@@ -1,16 +1,23 @@
 /**
  * HomeScreen — Dashboard landing page.
- * Shows daily summary, quick scan button, and recent meals.
+ * Phase 4: Dashboard Polish
+ *
+ * Features:
+ *   • Skeleton loading placeholders with Animated opacity pulse.
+ *   • Hero "Calories remaining" card (target − eaten) with Space Grotesk 48 number.
+ *   • Correct macro bar color logic (reaching protein goal is good, calories/carbs/fat overage warning).
+ *   • Visual hierarchy order: Greeting → Calories remaining → Macros → Scan card → 7-day chart → Recent meals.
+ *   • 7-day chart handles 0-value state with clean EmptyState; uses Inter labels.
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, ActivityIndicator, RefreshControl,
-  Dimensions
+  TouchableOpacity, RefreshControl, Dimensions,
+  Animated,
 } from 'react-native';
 import { BarChart } from 'react-native-chart-kit';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors, spacing, radii, getHealthColor } from '../theme/tokens';
+import { colors, spacing, radii, getHealthColor, fonts, typography } from '../theme/tokens';
 import * as api from '../services/api';
 
 export default function HomeScreen({ navigation }: any) {
@@ -31,6 +38,8 @@ export default function HomeScreen({ navigation }: any) {
       if (summaryRes) {
         setSummary(summaryRes);
         setLoggedIn(true);
+      } else {
+        setLoggedIn(api.isLoggedIn());
       }
       if (historyRes) {
         setRecentMeals(historyRes.meals || []);
@@ -39,78 +48,144 @@ export default function HomeScreen({ navigation }: any) {
         setWeeklyReport(reportRes);
       }
     } catch {
-      // Not logged in — show default state
+      setLoggedIn(api.isLoggedIn());
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useFocusEffect(useCallback(() => {
-    loadData();
-  }, []));
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const dateFormatted = now.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color={colors.textPrimary} /></View>;
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.md }}>
+        <View style={styles.skeletonHeader}>
+          <SkeletonPulse style={{ width: 120, height: 16, marginBottom: 8, borderRadius: 4 }} />
+          <SkeletonPulse style={{ width: 220, height: 32, marginBottom: 24, borderRadius: 6 }} />
+        </View>
+        <SkeletonCard height={140} />
+        <SkeletonCard height={160} />
+        <SkeletonCard height={120} />
+      </ScrollView>
+    );
   }
+
+  // Calculate calories remaining
+  const eatenCalories = Math.round(summary?.totals?.calories || 0);
+  const targetCalories = summary?.targets?.calories || 2000;
+  const remainingCalories = targetCalories - eatenCalories;
+  const isOverTarget = remainingCalories < 0;
+
+  // Chart data calculation
+  const chartDays = weeklyReport?.daily_data || [];
+  const chartValues = chartDays.map((d: any) => d.totals?.calories || 0);
+  const hasChartData = chartValues.some((v: number) => v > 0);
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.xxl }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(true); }} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            loadData(true);
+          }}
+        />
+      }
     >
-      {/* Greeting */}
-      <Text style={styles.greeting}>{greeting}</Text>
-      <Text style={styles.title}>Food Intelligence</Text>
+      {/* 1. Greeting & Date Header */}
+      <View style={styles.headerBlock}>
+        <Text style={styles.appTitle}>Food Intelligence</Text>
+        <Text style={styles.greeting}>{greeting}</Text>
+        <Text style={styles.dateText}>{dateFormatted}</Text>
+      </View>
 
-      {/* Quick Scan Card */}
-      <TouchableOpacity
-        style={styles.scanCard}
-        onPress={() => navigation.navigate('ScanTab')}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.scanCardTitle}>Scan Food</Text>
-        <Text style={styles.scanCardBody}>
-          Take a photo or pick from gallery to analyze nutritional content
-        </Text>
-        <View style={styles.scanBtn}>
-          <Text style={styles.scanBtnText}>Open Camera</Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Daily Progress */}
+      {/* 2. Hero Calories Remaining Card (if logged in) */}
       {loggedIn && summary && (
         <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Today's progress</Text>
-          <View style={styles.progressGrid}>
-            <ProgressItem
-              label="Calories"
-              current={Math.round(summary.totals?.calories || 0)}
-              target={summary.targets?.calories || 2000}
-              unit="kcal"
+          <Text style={styles.sectionLabel}>Calories Remaining</Text>
+          <View style={styles.calorieHeroRow}>
+            <Text
+              style={[
+                styles.calorieHeroNumber,
+                isOverTarget && { color: colors.limit },
+              ]}
+              maxFontSizeMultiplier={1.3}
+            >
+              {Math.abs(remainingCalories)}
+            </Text>
+            <View style={styles.calorieHeroSub}>
+              <Text style={[styles.calorieHeroCaption, isOverTarget && { color: colors.limit }]}>
+                {isOverTarget
+                  ? `kcal over goal (${targetCalories})`
+                  : `kcal left of ${targetCalories}`}
+              </Text>
+              <Text style={styles.calorieEatenCaption}>
+                {eatenCalories} kcal eaten today
+              </Text>
+            </View>
+          </View>
+
+          {/* Thin full-width calorie progress bar */}
+          <View style={styles.calorieProgressBg}>
+            <View
+              style={[
+                styles.calorieProgressFill,
+                {
+                  width: `${Math.min(100, Math.round((eatenCalories / targetCalories) * 100))}%`,
+                  backgroundColor: isOverTarget
+                    ? colors.limit
+                    : eatenCalories / targetCalories > 0.9
+                    ? colors.moderate
+                    : colors.accent,
+                },
+              ]}
             />
+          </View>
+        </View>
+      )}
+
+      {/* 3. Daily Macros Grid Card (if logged in) */}
+      {loggedIn && summary && (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Today's Macros</Text>
+          <View style={styles.macroProgressGrid}>
             <ProgressItem
               label="Protein"
               current={Math.round(summary.totals?.protein || 0)}
               target={summary.targets?.protein || 50}
               unit="g"
+              type="protein"
             />
             <ProgressItem
               label="Carbs"
               current={Math.round(summary.totals?.carbs || 0)}
               target={summary.targets?.carbs || 300}
               unit="g"
+              type="carbs"
             />
             <ProgressItem
               label="Fat"
               current={Math.round(summary.totals?.fat || 0)}
               target={summary.targets?.fat || 65}
               unit="g"
+              type="fat"
             />
           </View>
           <Text style={styles.mealsToday}>
@@ -119,29 +194,90 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       )}
 
-      {/* Not logged in prompt */}
+      {/* 4. Quick Scan Card */}
+      <TouchableOpacity
+        style={styles.scanCard}
+        onPress={() => navigation.navigate('ScanTab')}
+        activeOpacity={0.88}
+      >
+        <Text style={styles.scanCardTitle}>Scan Food</Text>
+        <Text style={styles.scanCardBody}>
+          Take a photo or pick from gallery to identify dishes and analyze nutritional macros.
+        </Text>
+        <View style={styles.scanBtn}>
+          <Text style={styles.scanBtnText}>Open Camera</Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* Not Logged In Promo Card */}
       {!loggedIn && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Track Your Nutrition</Text>
           <Text style={styles.cardBody}>
-            Create an account to save meal history, set daily goals, and track your progress over time.
+            Create an account or log in to save your meals, configure personalized TDEE targets, and review your weekly trend.
           </Text>
           <TouchableOpacity
             style={styles.outlineBtn}
             onPress={() => navigation.navigate('Profile')}
+            activeOpacity={0.7}
           >
-            <Text style={styles.outlineBtnText}>Get Started</Text>
+            <Text style={styles.outlineBtnText}>Get Started / Log In</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Recent Meals */}
+      {/* 5. 7-Day Calorie Trend Chart (Logged in) */}
+      {loggedIn && (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>7-Day Calorie Trend</Text>
+          {hasChartData ? (
+            <BarChart
+              data={{
+                labels: chartDays.map((d: any) =>
+                  new Date(d.date).toLocaleDateString(undefined, { weekday: 'short' })
+                ),
+                datasets: [{ data: chartValues }],
+              }}
+              width={Dimensions.get('window').width - spacing.md * 4}
+              height={200}
+              yAxisLabel=""
+              yAxisSuffix=""
+              chartConfig={{
+                backgroundColor: colors.surface,
+                backgroundGradientFrom: colors.surface,
+                backgroundGradientTo: colors.surface,
+                decimalPlaces: 0,
+                color: (opacity = 1) => `rgba(13, 13, 13, ${opacity})`,
+                labelColor: () => colors.textSecondary,
+                barPercentage: 0.5,
+                propsForLabels: {
+                  fontFamily: fonts.body,
+                  fontSize: 10,
+                },
+              }}
+              style={{ marginVertical: 8, borderRadius: radii.card, marginLeft: -12 }}
+              showValuesOnTopOfBars
+            />
+          ) : (
+            <View style={styles.chartEmptyBox}>
+              <Text style={styles.chartEmptyText}>
+                No calorie data recorded this week yet.
+              </Text>
+              <Text style={styles.chartEmptySub}>
+                Scan meals to build your weekly nutrition trend.
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* 6. Recent Meals */}
       {recentMeals.length > 0 && (
-        <View>
+        <View style={{ marginTop: spacing.xs }}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionLabel}>Recent meals</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('History')}>
-              <Text style={styles.seeAll}>See all</Text>
+            <Text style={styles.sectionLabel}>Recent Meals</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('History')} activeOpacity={0.7}>
+              <Text style={styles.seeAll}>See All</Text>
             </TouchableOpacity>
           </View>
           {recentMeals.map((meal: any) => (
@@ -149,56 +285,62 @@ export default function HomeScreen({ navigation }: any) {
           ))}
         </View>
       )}
-
-      {/* Weekly Trend Chart */}
-      {loggedIn && weeklyReport?.daily_data && (
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>7-Day Calorie Trend</Text>
-          <BarChart
-            data={{
-              labels: weeklyReport.daily_data.map((d: any) => new Date(d.date).toLocaleDateString(undefined, { weekday: 'short' })),
-              datasets: [{ data: weeklyReport.daily_data.map((d: any) => d.totals?.calories || 0) }]
-            }}
-            width={Dimensions.get('window').width - spacing.md * 4}
-            height={220}
-            yAxisLabel=""
-            yAxisSuffix=""
-            chartConfig={{
-              backgroundColor: colors.surface,
-              backgroundGradientFrom: colors.surface,
-              backgroundGradientTo: colors.surface,
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(13, 13, 13, ${opacity})`,
-              labelColor: (opacity = 1) => `rgba(107, 107, 107, ${opacity})`,
-              barPercentage: 0.5,
-              propsForLabels: { fontSize: 10 }
-            }}
-            style={{ marginVertical: 8, borderRadius: radii.card, marginLeft: -10 }}
-            showValuesOnTopOfBars
-          />
-        </View>
-      )}
     </ScrollView>
   );
 }
 
-function ProgressItem({ label, current, target, unit }: any) {
-  const pct = target > 0 ? Math.min((current / target) * 100, 100) : 0;
-  const color = pct > 90 ? colors.error : pct > 60 ? colors.moderate : colors.accent;
+// ---------------------------------------------------------------------------
+// Macro Progress Item Component
+// ---------------------------------------------------------------------------
+interface ProgressItemProps {
+  label: string;
+  current: number;
+  target: number;
+  unit: string;
+  type: 'protein' | 'carbs' | 'fat';
+}
+
+function ProgressItem({ label, current, target, unit, type }: ProgressItemProps) {
+  const ratio = target > 0 ? current / target : 0;
+  const pct = Math.min(100, Math.round(ratio * 100));
+  const isOver = current > target;
+
+  // Color logic:
+  // Protein: always accent (green, exceeding protein target is good)
+  // Carbs & Fat: green <= 100%, moderate 100-110%, red > 110%
+  let barColor = colors.accent;
+  if (type !== 'protein') {
+    if (ratio > 1.1) {
+      barColor = colors.limit;
+    } else if (ratio > 1.0) {
+      barColor = colors.moderate;
+    } else {
+      barColor = colors.accent;
+    }
+  }
 
   return (
     <View style={styles.progressItem}>
       <Text style={styles.progressValue}>{current}</Text>
-      <Text style={styles.progressTarget}>/ {target} {unit}</Text>
-      {/* Simple progress bar */}
+      <Text style={styles.progressTarget}>
+        / {target} {unit}
+      </Text>
+
+      {/* Progress Bar */}
       <View style={styles.progressBarBg}>
-        <View style={[styles.progressBarFill, { width: `${pct}%`, backgroundColor: color }]} />
+        <View style={[styles.progressBarFill, { width: `${pct}%`, backgroundColor: barColor }]} />
       </View>
-      <Text style={styles.progressLabel}>{label}</Text>
+
+      <Text style={styles.progressLabel}>
+        {label} {isOver && <Text style={{ color: barColor }}>({pct}%)</Text>}
+      </Text>
     </View>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Recent Meal Card Component
+// ---------------------------------------------------------------------------
 function RecentMealCard({ meal }: { meal: any }) {
   const foods = meal.foods_json || [];
   const time = new Date(meal.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -212,96 +354,318 @@ function RecentMealCard({ meal }: { meal: any }) {
       </View>
       {foods.slice(0, 3).map((f: any, i: number) => (
         <View key={i} style={styles.mealFoodRow}>
-          <Text style={styles.mealFoodName} numberOfLines={1}>{f.name}</Text>
+          <Text style={styles.mealFoodName} numberOfLines={1}>
+            {f.name}
+          </Text>
           <Text style={[styles.mealFoodScore, { color: getHealthColor(f.health_label) }]}>
             {f.health_score}
           </Text>
         </View>
       ))}
       {foods.length > 3 && (
-        <Text style={styles.moreText}>+{foods.length - 3} more</Text>
+        <Text style={styles.moreText}>+{foods.length - 3} more items</Text>
       )}
     </View>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Skeleton Pulse Placeholder Components
+// ---------------------------------------------------------------------------
+function SkeletonPulse({ style }: { style: any }) {
+  const opacity = useRef(new Animated.Value(0.35)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.75, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.35, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: colors.border }, style, { opacity }]} />;
+}
+
+function SkeletonCard({ height = 120 }: { height?: number }) {
+  return (
+    <View style={[styles.card, { height, justifyContent: 'space-around' }]}>
+      <SkeletonPulse style={{ width: 100, height: 14, borderRadius: 4 }} />
+      <SkeletonPulse style={{ width: '80%', height: 24, borderRadius: 6 }} />
+      <SkeletonPulse style={{ width: '50%', height: 12, borderRadius: 4 }} />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
-  greeting: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.md },
-  title: { fontSize: 32, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.lg },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  headerBlock: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  appTitle: {
+    fontSize: 28,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+  },
+  greeting: {
+    fontSize: 16,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  dateText: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  skeletonHeader: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
 
-  // Scan card
+  // Scan Card
   scanCard: {
-    backgroundColor: colors.textPrimary, borderRadius: radii.card,
-    padding: spacing.lg, marginBottom: spacing.md,
+    backgroundColor: colors.textPrimary,
+    borderRadius: radii.card,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
-  scanCardTitle: { fontSize: 22, fontWeight: '700', color: '#FFFFFF', marginBottom: spacing.xs },
-  scanCardBody: { fontSize: 14, color: 'rgba(255,255,255,0.7)', lineHeight: 20, marginBottom: spacing.md },
+  scanCardTitle: {
+    fontSize: 22,
+    fontFamily: fonts.display,
+    color: '#FFFFFF',
+    marginBottom: spacing.xs,
+  },
+  scanCardBody: {
+    fontSize: 14,
+    fontFamily: fonts.body,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 20,
+    marginBottom: spacing.md,
+  },
   scanBtn: {
-    backgroundColor: '#FFFFFF', borderRadius: radii.button,
-    paddingVertical: 12, alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: radii.button,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
-  scanBtnText: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
+  scanBtnText: {
+    fontSize: 15,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
+  },
 
-  // Cards
+  // Generic Card
   card: {
-    backgroundColor: colors.surface, borderRadius: radii.card,
-    borderWidth: 1, borderColor: colors.border,
-    padding: spacing.md, marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
-  cardTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.xs },
-  cardBody: { fontSize: 14, color: colors.textSecondary, lineHeight: 20, marginBottom: spacing.md },
+  cardTitle: {
+    fontSize: 18,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  cardBody: {
+    fontSize: 14,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.md,
+  },
   outlineBtn: {
-    borderWidth: 1, borderColor: colors.textPrimary, borderRadius: radii.button,
-    paddingVertical: 12, alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    borderRadius: radii.button,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
-  outlineBtnText: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
+  outlineBtnText: {
+    fontSize: 15,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
+  },
 
-  // Section
+  // Hero Calorie Block
   sectionLabel: {
-    fontSize: 13, fontWeight: '600', color: colors.textSecondary,
-    letterSpacing: 0.3, marginBottom: spacing.sm,
+    fontSize: 12,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
   },
-  sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: spacing.sm,
+  calorieHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginVertical: spacing.xs,
   },
-  seeAll: { fontSize: 13, fontWeight: '600', color: colors.accent },
+  calorieHeroNumber: {
+    fontSize: 48,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+    lineHeight: 52,
+    marginRight: spacing.md,
+  },
+  calorieHeroSub: {
+    flex: 1,
+  },
+  calorieHeroCaption: {
+    fontSize: 14,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
+  },
+  calorieEatenCaption: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  calorieProgressBg: {
+    width: '100%',
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+    marginTop: spacing.sm,
+    overflow: 'hidden',
+  },
+  calorieProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
 
-  // Progress
-  progressGrid: { flexDirection: 'row', justifyContent: 'space-between' },
-  progressItem: { alignItems: 'center', flex: 1 },
-  progressValue: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
-  progressTarget: { fontSize: 11, color: colors.textSecondary, marginBottom: 4 },
+  // Macro Progress Grid
+  macroProgressGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.xs,
+  },
+  progressItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  progressValue: {
+    fontSize: 22,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+  },
+  progressTarget: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
   progressBarBg: {
-    width: '80%', height: 4, backgroundColor: colors.border,
-    borderRadius: 2, marginVertical: 4,
+    width: '85%',
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    marginVertical: 4,
+    overflow: 'hidden',
   },
-  progressBarFill: { height: 4, borderRadius: 2 },
-  progressLabel: { fontSize: 12, color: colors.textSecondary },
+  progressBarFill: {
+    height: 4,
+    borderRadius: 2,
+  },
+  progressLabel: {
+    fontSize: 12,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textSecondary,
+  },
   mealsToday: {
-    fontSize: 13, color: colors.textSecondary,
-    textAlign: 'center', marginTop: spacing.md,
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.xs + 2,
   },
 
-  // Stats
-  statRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border,
+  // Chart Empty State
+  chartEmptyBox: {
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
   },
-  statLabel: { fontSize: 14, color: colors.textSecondary },
-  statValue: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
+  chartEmptyText: {
+    fontSize: 14,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textPrimary,
+  },
+  chartEmptySub: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
 
-  // Meal cards
-  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
-  mealTime: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
-  mealCal: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+  // Section Header
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  seeAll: {
+    fontSize: 13,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
+    textDecorationLine: 'underline',
+  },
+
+  // Meal Cards
+  mealHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  mealTime: {
+    fontSize: 15,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
+  },
+  mealCal: {
+    fontSize: 16,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+  },
   mealFoodRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 4, borderTopWidth: 1, borderTopColor: colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  mealFoodName: { fontSize: 14, color: colors.textPrimary, flex: 1 },
-  mealFoodScore: { fontSize: 15, fontWeight: '700', marginLeft: spacing.sm },
-  moreText: { fontSize: 12, color: colors.textSecondary, marginTop: 4 },
+  mealFoodName: {
+    fontSize: 14,
+    fontFamily: fonts.body,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  mealFoodScore: {
+    fontSize: 15,
+    fontFamily: fonts.display,
+    marginLeft: spacing.sm,
+  },
+  moreText: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
 });

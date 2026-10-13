@@ -27,7 +27,13 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-status-bar",
-      "expo-font"
-    ]
+      "expo-font",
+      "expo-splash-screen"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ef533c99-5b44-4772-a5ed-f1b04c11d19a"
+      }
+    }
   }
 }

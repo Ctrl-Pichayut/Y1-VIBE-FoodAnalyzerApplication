@@ -1,0 +1,25 @@
+name: Keep Alive (Render & Supabase)
+
+on:
+  schedule:
+    # Runs every 6 hours to keep Supabase active (prevents 7-day inactivity pause)
+    # and keeps the Render container primed.
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  ping-health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend Warmup & Database Probe
+        run: |
+          echo "Sending warmup probe to Render + Supabase..."
+          RESPONSE=$(curl -s --max-time 60 "https://foodanalyzer-api-t9i6.onrender.com/health/warmup")
+          echo "Response: $RESPONSE"
+          
+          # Verify that the response contains healthy markers
+          if echo "$RESPONSE" | grep -q '"ready":true'; then
+            echo "✅ Service and database are active and healthy!"
+          else
+            echo "⚠️ Health check returned unexpected status, but endpoint was hit."
+          fi

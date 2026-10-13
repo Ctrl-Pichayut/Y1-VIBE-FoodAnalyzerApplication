@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: foodanalyzer-api
+    runtime: docker
+    region: singapore
+    plan: free
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true

@@ -17,7 +17,7 @@ if (process.env.EXPO_PUBLIC_API_URL) {
   DEV_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 }
 
-const PROD_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://foodanalyzer-vbfg.onrender.com';
+const PROD_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://foodanalyzer-api-t9i6.onrender.com';
 const BASE_URL = __DEV__ ? DEV_BASE_URL : PROD_BASE_URL;
 
 /** P16: Expose BASE_URL for screens that need direct fetch (e.g. warmup). */

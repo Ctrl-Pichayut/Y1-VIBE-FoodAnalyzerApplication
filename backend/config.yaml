@@ -17,7 +17,7 @@ model:
 # mode requires Gemini; otherwise the app auto-degrades to YOLO.
 recognition:
   mode: "hybrid"
-  model: "gemini-2.5-flash"      # gemini-2.5-flash (stable, free-tier) | gemini-3.5-flash
+  model: "gemini-3.5-flash-lite"      # gemini-3.5-flash-lite (500 RPD free tier) | gemini-3.1-flash-lite
   confidence_threshold: 0.65     # hybrid: YOLO best conf below this → try Gemini
   fuzzy_match_threshold: 0.75    # difflib ratio for Gemini dish_name → nutrition_db
   request_timeout: 20            # seconds, per Gemini API call

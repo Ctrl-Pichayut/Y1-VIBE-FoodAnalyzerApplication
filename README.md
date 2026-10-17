@@ -3,7 +3,7 @@
   <p align="center">
     <strong>Production-grade, AI-powered food recognition & nutritional tracking mobile application</strong>
     <br />
-    Combines edge-optimized YOLOv8 object detection with Google Gemini 2.5 Flash vision fallback for accurate macro calculation and dietary governance.
+    Combines edge-optimized YOLOv8 object detection with Google Gemini 3.5 Flash-Lite vision fallback for accurate macro calculation and dietary governance.
   </p>
   <p align="center">
     <img src="https://img.shields.io/badge/React%20Native-0.85-61DAFB?logo=react&logoColor=white" alt="React Native" />
@@ -11,7 +11,7 @@
     <img src="https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
     <img src="https://img.shields.io/badge/FastAPI-Python%203.11+-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
     <img src="https://img.shields.io/badge/YOLOv8-ONNX%20Runtime-00599C?logo=onnx&logoColor=white" alt="ONNX" />
-    <img src="https://img.shields.io/badge/Google%20Gemini-2.5%20Flash-4285F4?logo=google&logoColor=white" alt="Gemini" />
+    <img src="https://img.shields.io/badge/Google%20Gemini-3.5%20Flash--Lite-4285F4?logo=google&logoColor=white" alt="Gemini" />
     <img src="https://img.shields.io/badge/Database-PostgreSQL%20%7C%20Supabase-3ECF8E?logo=supabase&logoColor=white" alt="Supabase" />
     <img src="https://img.shields.io/badge/Deployment-Render%20%7C%20EAS%20Build-46E3B7?logo=render&logoColor=white" alt="Render" />
   </p>
@@ -32,7 +32,7 @@
 
 The system features a **two-tiered hybrid intelligence architecture**:
 1. **Edge-Optimized Local Inference (Tier 1):** A custom-trained **YOLOv8n** model exported to **ONNX Runtime** performs sub-second multi-dish detection across 157 Thai and international culinary classes with zero cloud inference cost.
-2. **Cloud Multimodal Vision Fallback (Tier 2):** When detection confidence drops below configurable thresholds or unfamiliar dishes are scanned, the system routes the frame to **Google Gemini 2.5 Flash** for open-vocabulary visual reasoning.
+2. **Cloud Multimodal Vision Fallback (Tier 2):** When detection confidence drops below configurable thresholds or unfamiliar dishes are scanned, the system routes the frame to **Google Gemini 3.5 Flash-Lite** (500 RPD free tier) for open-vocabulary visual reasoning.
 3. **Human-in-the-Loop Governance:** AI-estimated foods are queued in an admin review console where nutritional values can be audited and promoted into the verified PostgreSQL database.
 
 ---
@@ -57,8 +57,8 @@ The system features a **two-tiered hybrid intelligence architecture**:
 │   │   157 Culinary Classes        │                         │           │
 │   └──────────────┬────────────────┘                         ▼           │
 │                  │ Detected                         ┌───────────────┐   │
-│                  ▼ Labels                           │ Gemini 2.5    │   │
-│   ┌──────────────────────────────────────────────┐  │ Flash Vision  │   │
+│                  ▼ Labels                           │ Gemini 3.5    │   │
+│   ┌──────────────────────────────────────────────┐  │ Flash-Lite    │   │
 │   │         Tiered Nutrition Resolver            │  └───────┬───────┘   │
 │   │                                              │          │           │
 │   │  • Tier 0: Admin Verified Cache              │ ◄────────┘ Estimated │
@@ -125,7 +125,7 @@ The system features a **two-tiered hybrid intelligence architecture**:
 | | **bcrypt** | Salted cryptographic password hashing |
 | **Machine Learning** | **YOLOv8n (Ultralytics)** | Custom fine-tuned lightweight convolutional model |
 | | **ONNX Runtime** | Optimized CPU execution provider for embedded inference |
-| | **Google Gemini 2.5 Flash** | Multimodal LLM vision fallback via Google GenAI SDK |
+| | **Google Gemini 3.5 Flash-Lite** | Multimodal LLM vision fallback via Google GenAI SDK (500 RPD free tier) |
 | **Cloud & DevOps** | **PostgreSQL (Supabase)** | Managed relational database with connection pooling |
 | | **Render** | Dockerized cloud container web service |
 | | **EAS Build** | Cloud compilation pipeline for production APK / AAB bundles |
@@ -217,6 +217,7 @@ This repository enforces strict credential separation. Secrets, database passwor
 ### Environment Variable Templates
 - **Backend:** Refer to [`backend/.env.example`](backend/.env.example)
   - `GEMINI_API_KEY`: API key obtained from [Google AI Studio](https://aistudio.google.com/apikey).
+  - `GEMINI_MODEL`: (Optional) Model override (defaults to `gemini-3.5-flash-lite`, 500 RPD free tier).
   - `DATABASE_URL`: Standard PostgreSQL connection string (Supabase / Render).
   - `SECRET_KEY`: Cryptographic signing secret for JWT token creation.
 - **Mobile:** Refer to [`mobile/.env.example`](mobile/.env.example)

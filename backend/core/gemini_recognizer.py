@@ -81,10 +81,11 @@ class GeminiRecognizer:
     """
 
     def __init__(self, config: dict, api_key: Optional[str]):
+        import os
         self.config = config
         self.enabled = bool(api_key)
         self._client = None
-        self._model = config["recognition"]["model"]
+        self._model = os.getenv("GEMINI_MODEL") or config.get("recognition", {}).get("model", "gemini-3.5-flash-lite")
 
         if not self.enabled:
             print("[Gemini] disabled — no GEMINI_API_KEY set (YOLO-only mode)")

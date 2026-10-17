@@ -32,9 +32,13 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    is_admin: bool = False
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -123,12 +127,20 @@ class AnalyzeResponse(BaseModel):
 class MealLogCreate(BaseModel):
     foods_json: List[Dict[str, Any]]
     totals_json: Optional[Dict[str, Any]] = None
+    meal_type: Optional[str] = None
+    scan_id: Optional[str] = None
+
+class MealLogUpdate(BaseModel):
+    foods_json: List[Dict[str, Any]]
+    totals_json: Optional[Dict[str, Any]] = None
+    meal_type: Optional[str] = None
 
 class MealLogResponse(BaseModel):
     id: int
     user_id: int
     timestamp: datetime
     scan_id: Optional[str]
+    meal_type: Optional[str] = "snack"
     foods_json: List[Dict[str, Any]]
     totals_json: Optional[Dict[str, Any]]
 

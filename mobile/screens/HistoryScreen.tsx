@@ -1,32 +1,40 @@
 /**
  * HistoryScreen — Paginated meal journal grouped by day with SectionList.
- * Phase 4: History Polish
  *
  * Features:
  *   • SectionList grouped by day ("Today", "Yesterday", "Mon, 12 Oct") with per-day total kcal.
- *   • Duplicated daily summary removed (clean, focused meal timeline).
- *   • Delete discoverability: swipeable action + onLongPress confirmation AppModal.
+ *   • Meal type badges (Breakfast, Lunch, Dinner, Snack) on each meal card.
+ *   • "+ Log Manually" action button in top bar & empty state (Part 4.1).
+ *   • Swipeable delete + onLongPress confirmation AppModal.
  *   • Optimistic delete with 5-second Undo toast.
- *   • Logged-out state: graceful empty state with "Log In" button (no API errors).
- *   • Memoized components for SectionHeader, EmptyState, Footer to prevent remounting.
- *   • Pagination with loadingMore guard.
  */
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, SectionList,
-  TouchableOpacity, ActivityIndicator, RefreshControl,
+  View,
+  Text,
+  StyleSheet,
+  SectionList,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
-import { colors, spacing, radii, getHealthColor, fonts, typography } from '../theme/tokens';
+import { colors, spacing, radii, getHealthColor, fonts } from '../theme/tokens';
 import { getHistory, deleteMeal, isLoggedIn } from '../services/api';
 import AppModal, { ModalState } from '../components/AppModal';
+import DishCorrectionModal from '../components/DishCorrectionModal';
 
 interface MealSection {
   title: string;
   totalKcal: number;
   data: any[];
+}
+
+function formatMealType(mealType?: string): string {
+  if (!mealType) return 'Meal';
+  return mealType.charAt(0).toUpperCase() + mealType.slice(1);
 }
 
 export default function HistoryScreen({ navigation }: any) {
@@ -38,11 +46,16 @@ export default function HistoryScreen({ navigation }: any) {
   const [hasMore, setHasMore] = useState(true);
   const [modal, setModal] = useState<ModalState | null>(null);
   const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
+  const [manualLogOpen, setManualLogOpen] = useState(false);
 
   // Undo toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [undoSeconds, setUndoSeconds] = useState(0);
-  const pendingDeleteRef = useRef<{ id: number; item: any; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const pendingDeleteRef = useRef<{
+    id: number;
+    item: any;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
 
   // Undo countdown
   useEffect(() => {
@@ -116,6 +129,22 @@ export default function HistoryScreen({ navigation }: any) {
     }
   };
 
+  const handleManualDishSelected = (dishDetail: any) => {
+    setManualLogOpen(false);
+    const manualFood = {
+      ...dishDetail,
+      serving_estimate_g: 250,
+      confidence: 1.0,
+      source: 'nutrition_db',
+      verified: true,
+    };
+    navigation.navigate('MealDetail', {
+      result: {
+        foods: [manualFood],
+      },
+    });
+  };
+
   // Group meals by day into sections
   const sections: MealSection[] = useMemo(() => {
     const groups: Record<string, { title: string; totalKcal: number; data: any[] }> = {};
@@ -171,17 +200,14 @@ export default function HistoryScreen({ navigation }: any) {
   };
 
   const executeDeleteOptimistic = (meal: any) => {
-    // If a previous delete is pending, flush it now
     if (pendingDeleteRef.current) {
       clearTimeout(pendingDeleteRef.current.timer);
       deleteMeal(pendingDeleteRef.current.id).catch(() => {});
       pendingDeleteRef.current = null;
     }
 
-    // Remove from local list immediately
     setMeals((prev) => prev.filter((m) => m.id !== meal.id));
 
-    // Start 5-second countdown before server call
     const timer = setTimeout(async () => {
       try {
         await deleteMeal(meal.id);
@@ -200,7 +226,11 @@ export default function HistoryScreen({ navigation }: any) {
     if (pendingDeleteRef.current) {
       clearTimeout(pendingDeleteRef.current.timer);
       const restored = pendingDeleteRef.current.item;
-      setMeals((prev) => [restored, ...prev].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      setMeals((prev) =>
+        [restored, ...prev].sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        )
+      );
       pendingDeleteRef.current = null;
       setUndoSeconds(0);
       setToastMessage('Meal restored');
@@ -240,15 +270,24 @@ export default function HistoryScreen({ navigation }: any) {
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyTitle}>No meals logged yet</Text>
         <Text style={styles.emptyBody}>
-          Scan your first dish to start tracking your daily nutritional history.
+          Scan your first dish or search the food catalog to start tracking your daily nutrition.
         </Text>
-        <TouchableOpacity
-          style={styles.emptyBtn}
-          onPress={() => navigation.navigate('ScanTab')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.emptyBtnText}>Scan a Meal</Text>
-        </TouchableOpacity>
+        <View style={styles.emptyBtnRow}>
+          <TouchableOpacity
+            style={styles.emptyBtn}
+            onPress={() => navigation.navigate('ScanTab')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.emptyBtnText}>Scan a Meal</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.emptySecondaryBtn}
+            onPress={() => setManualLogOpen(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.emptySecondaryBtnText}>Log Manually</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     ),
     [navigation]
@@ -256,15 +295,14 @@ export default function HistoryScreen({ navigation }: any) {
 
   // Render Footer Component
   const renderFooter = useMemo(
-    () => (
+    () =>
       loadingMore ? (
         <View style={styles.footerLoader}>
           <ActivityIndicator size="small" color={colors.textPrimary} />
         </View>
       ) : (
         <View style={{ height: spacing.xxl }} />
-      )
-    ),
+      ),
     [loadingMore]
   );
 
@@ -298,11 +336,18 @@ export default function HistoryScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {/* Tip Banner */}
-      <View style={styles.hintBanner}>
+      {/* Top Action Bar */}
+      <View style={styles.topActionBar}>
         <Text style={styles.hintBannerText}>
-          Tip: Swipe left or long-press any meal to delete
+          Tap a meal to view or edit · Swipe left to delete
         </Text>
+        <TouchableOpacity
+          style={styles.manualAddPill}
+          onPress={() => setManualLogOpen(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.manualAddPillText}>+ Log Food</Text>
+        </TouchableOpacity>
       </View>
 
       <SectionList
@@ -331,6 +376,14 @@ export default function HistoryScreen({ navigation }: any) {
         </View>
       )}
 
+      <DishCorrectionModal
+        visible={manualLogOpen}
+        title="Log Food Manually"
+        subtitle="Select a dish to customize portion & save"
+        onSelect={handleManualDishSelected}
+        onClose={() => setManualLogOpen(false)}
+      />
+
       <AppModal state={modal} onClose={() => setModal(null)} />
     </View>
   );
@@ -349,7 +402,10 @@ function MealCard({
   onDelete: () => void;
 }) {
   const foods = meal.foods_json || [];
-  const time = new Date(meal.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const time = new Date(meal.timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
   const totalCal = meal.totals_json?.calories ? Math.round(meal.totals_json.calories) : 0;
 
   const renderRightActions = () => (
@@ -367,7 +423,14 @@ function MealCard({
         activeOpacity={0.7}
       >
         <View style={styles.mealHeader}>
-          <Text style={styles.mealTime}>{time}</Text>
+          <View style={styles.mealTimeRow}>
+            <Text style={styles.mealTime}>{time}</Text>
+            {meal.meal_type && (
+              <View style={styles.mealTypeBadge}>
+                <Text style={styles.mealTypeBadgeText}>{formatMealType(meal.meal_type)}</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.mealCal}>{totalCal} kcal</Text>
         </View>
 
@@ -404,18 +467,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
   },
-  hintBanner: {
-    paddingVertical: 6,
+  topActionBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
     paddingHorizontal: spacing.md,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    alignItems: 'center',
   },
   hintBannerText: {
     fontSize: 12,
     fontFamily: fonts.body,
     color: colors.textSecondary,
+    flex: 1,
+  },
+  manualAddPill: {
+    backgroundColor: colors.textPrimary,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    marginLeft: spacing.sm,
+  },
+  manualAddPillText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: fonts.bodySemiBold,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -446,12 +524,32 @@ const styles = StyleSheet.create({
   mealHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.xs,
+  },
+  mealTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   mealTime: {
     fontSize: 14,
     fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
+  },
+  mealTypeBadge: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  mealTypeBadgeText: {
+    fontSize: 10,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
   },
   mealCal: {
     fontSize: 16,
@@ -521,14 +619,30 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: spacing.lg,
   },
+  emptyBtnRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   emptyBtn: {
     backgroundColor: colors.textPrimary,
     paddingVertical: 12,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
     borderRadius: radii.button,
   },
   emptyBtnText: {
     color: '#FFFFFF',
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 14,
+  },
+  emptySecondaryBtn: {
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.button,
+  },
+  emptySecondaryBtnText: {
+    color: colors.textPrimary,
     fontFamily: fonts.bodySemiBold,
     fontSize: 14,
   },

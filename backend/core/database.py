@@ -66,49 +66,37 @@ def get_db():
 
 def sync_schema() -> dict:
     """
-    Add ORM columns that are missing from the physical SQLite schema.
+    Add ORM columns that are missing from the physical DB schema (SQLite or PostgreSQL).
 
     SQLAlchemy's ``create_all`` only creates missing *tables* — it never
-    alters an existing table to add a column. Without this, a new model
-    field (e.g. ``User.gender``) causes ``no such column`` errors against
-    databases created before the field existed.
-
-    Strategy: for every mapped table that already exists, compare its
-    physical columns (via PRAGMA) against the ORM columns and run an
-    additive ``ALTER TABLE ... ADD COLUMN`` for each missing one.
-
-    SQLite only supports additive ALTERs (no type/nullable changes, no
-    drops), which is exactly what we need for dev-schema drift. Returns a
-    ``{table: [added_columns]}`` report so callers can log migrations.
-
-    NOTE: intended for the SQLite dev DB. A production deployment should
-    use a real migration tool (Alembic).
+    alters an existing table to add a column. This compares physical columns
+    against ORM columns and executes an additive ``ALTER TABLE ... ADD COLUMN``
+    for each missing nullable column.
     """
     from sqlalchemy import inspect, text
 
     report: dict[str, list[str]] = {}
-    if not DATABASE_URL.startswith("sqlite"):
-        # P11: sync_schema only supports SQLite. For PostgreSQL (Supabase),
-        # use Alembic migrations. Alembic has now been initialized in this project.
-        # Run `alembic revision --autogenerate -m "Init"` to create migrations.
+    try:
+        inspector = inspect(engine)
+        existing_tables = set(inspector.get_table_names())
+    except Exception:
         return report
-
-    inspector = inspect(engine)
 
     for mapper in Base.registry.mappers:
         table = mapper.local_table
-        if table is None or table.name not in inspector.get_table_names():
+        if table is None or table.name not in existing_tables:
             continue  # create_all handles entirely new tables
 
-        existing_cols = {c["name"] for c in inspector.get_columns(table.name)}
+        try:
+            existing_cols = {c["name"] for c in inspector.get_columns(table.name)}
+        except Exception:
+            continue
 
         for column in table.columns:
             if column.name in existing_cols:
                 continue
 
             col_type = column.type.compile(engine.dialect)
-            # New columns must be nullable or have a server/Python default,
-            # otherwise existing rows would violate NOT NULL on SQLite.
             null_clause = "" if column.nullable else " NOT NULL"
             default_clause = ""
             if column.server_default is not None:
@@ -118,8 +106,11 @@ def sync_schema() -> dict:
                 f'ALTER TABLE "{table.name}" '
                 f'ADD COLUMN "{column.name}" {col_type}{null_clause}{default_clause}'
             )
-            with engine.begin() as conn:
-                conn.execute(stmt)
-            report.setdefault(table.name, []).append(column.name)
+            try:
+                with engine.begin() as conn:
+                    conn.execute(stmt)
+                report.setdefault(table.name, []).append(column.name)
+            except Exception as e:
+                print(f"[DB] sync_schema skipped {table.name}.{column.name}: {e}")
 
     return report

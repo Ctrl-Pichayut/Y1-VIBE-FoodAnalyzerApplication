@@ -61,16 +61,18 @@ CREATE INDEX IF NOT EXISTS ix_food_items_yolo_class_id ON food_items (yolo_class
 -- Meal logs
 CREATE TABLE IF NOT EXISTS meal_logs (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    timestamp TIMESTAMP DEFAULT NOW(),
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     scan_id VARCHAR(36),
-    foods_json JSON NOT NULL,
-    totals_json JSON
+    meal_type VARCHAR(30) DEFAULT 'snack',
+    foods_json JSONB NOT NULL,
+    totals_json JSONB
 );
 
 CREATE INDEX IF NOT EXISTS ix_meal_logs_id ON meal_logs (id);
 CREATE INDEX IF NOT EXISTS ix_meal_logs_user_id ON meal_logs (user_id);
 CREATE INDEX IF NOT EXISTS ix_meal_logs_scan_id ON meal_logs (scan_id);
+CREATE INDEX IF NOT EXISTS ix_meal_logs_user_timestamp ON meal_logs (user_id, timestamp DESC);
 
 -- Model versions
 CREATE TABLE IF NOT EXISTS model_versions (
@@ -78,7 +80,7 @@ CREATE TABLE IF NOT EXISTS model_versions (
     version_tag VARCHAR(50) NOT NULL,
     pt_path VARCHAR(500) NOT NULL,
     class_count INTEGER NOT NULL,
-    uploaded_at TIMESTAMP DEFAULT NOW(),
+    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     is_active BOOLEAN DEFAULT FALSE
 );
 
@@ -88,20 +90,31 @@ CREATE INDEX IF NOT EXISTS ix_model_versions_id ON model_versions (id);
 CREATE TABLE IF NOT EXISTS nutrition_reviews (
     id SERIAL PRIMARY KEY,
     dish_name VARCHAR(255) UNIQUE NOT NULL,
-    per_100g JSON NOT NULL,
-    allergens JSON DEFAULT '[]',
+    per_100g JSONB NOT NULL,
+    allergens JSONB DEFAULT '[]',
     status VARCHAR(20) DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT NOW(),
-    reviewed_at TIMESTAMP,
-    promoted_by INTEGER
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    reviewed_at TIMESTAMP WITH TIME ZONE,
+    promoted_by INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS ix_nutrition_reviews_id ON nutrition_reviews (id);
 CREATE INDEX IF NOT EXISTS ix_nutrition_reviews_dish_name ON nutrition_reviews (dish_name);
+
+-- Revoked tokens
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+    id SERIAL PRIMARY KEY,
+    jti VARCHAR(36) UNIQUE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS ix_revoked_tokens_id ON revoked_tokens (id);
+CREATE INDEX IF NOT EXISTS ix_revoked_tokens_jti ON revoked_tokens (jti);
 """
 
 # Ordered list of tables to migrate (respects dependencies)
-TABLES = ["users", "food_items", "meal_logs", "model_versions", "nutrition_reviews"]
+TABLES = ["users", "food_items", "meal_logs", "model_versions", "nutrition_reviews", "revoked_tokens"]
 
 
 def connect(url: str):

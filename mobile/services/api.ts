@@ -1,9 +1,10 @@
 /**
  * API service — handles all communication with the FastAPI backend.
- * Manages JWT tokens via SecureStore.
+ * Manages JWT tokens via SecureStore and offline fallback via expo-sqlite.
  */
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
+import { getCache, setCache, clearUserCache } from './offlineCache';
 
 // Backend URL — selected dynamically:
 // • EXPO_PUBLIC_API_URL overrides everything if set.
@@ -46,10 +47,20 @@ export async function clearTokens() {
   refreshToken = null;
   await SecureStore.deleteItemAsync('access_token');
   await SecureStore.deleteItemAsync('refresh_token');
+  clearUserCache();
 }
 
 export function isLoggedIn(): boolean {
   return accessToken !== null;
+}
+
+/**
+ * Compute client timezone offset in minutes east of UTC (e.g. +420 for UTC+7).
+ * Note: JavaScript's Date.getTimezoneOffset() returns minutes WEST of UTC (-420 for UTC+7),
+ * so we negate it.
+ */
+function getClientTzOffsetMinutes(): number {
+  return -new Date().getTimezoneOffset();
 }
 
 // ---------------------------------------------------------------------------
@@ -80,8 +91,6 @@ export async function warmup(attempts = 6): Promise<boolean> {
   for (let i = 0; i < attempts; i++) {
     try {
       const res = await fetch(`${BASE_URL}/health/warmup`, {
-        // Short timeout per attempt — a sleeping Render often accepts the
-        // connection then takes a while to respond; we'd rather retry.
         signal: AbortSignal.timeout(15000),
       });
       if (res.ok) {
@@ -91,7 +100,6 @@ export async function warmup(attempts = 6): Promise<boolean> {
     } catch {
       // Network error / timeout — server still starting. Retry.
     }
-    // Backoff: 5s, 10s, 15s, 20s, 25s ... gives Render time to boot.
     await sleep(5000 * (i + 1));
   }
   return false;
@@ -126,7 +134,6 @@ async function request(
   try {
     res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   } catch (networkErr) {
-    // Network failure — most likely a cold start. Retry with backoff.
     if (coldStartAttempts < 3) {
       await sleep(4000 * (coldStartAttempts + 1));
       return request(path, options, retry, coldStartAttempts + 1);
@@ -134,14 +141,12 @@ async function request(
     throw new ServerWarmingUp();
   }
 
-  // 503 = service explicitly unavailable (Render still booting)
   if (res.status === 503 && coldStartAttempts < 3) {
     await sleep(4000 * (coldStartAttempts + 1));
     return request(path, options, retry, coldStartAttempts + 1);
   }
 
   if (res.status === 401 && retry && refreshToken) {
-    // Try refresh
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       return request(path, options, false);
@@ -151,7 +156,6 @@ async function request(
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     let errMsg = body.detail || body.error || `Request failed: ${res.status}`;
-    // FastAPI 422 Validation Errors return an array of error objects in `detail`.
     if (Array.isArray(errMsg)) {
       errMsg = errMsg.map((e: any) => e.msg || JSON.stringify(e)).join(', ');
     } else if (typeof errMsg === 'object') {
@@ -212,13 +216,19 @@ export async function login(email: string, password: string) {
 }
 
 export async function logout() {
-  // P8 fix: Call server-side logout to revoke the token before clearing
-  // local storage. If the server call fails (offline, etc.), we still
-  // clear tokens locally so the user isn't stuck.
+  // Revoke both the current access token (via Authorization header) and the
+  // refresh token (via request body) before clearing local storage.
   try {
-    await request('/api/v1/auth/logout', { method: 'POST' }, false);
+    await request(
+      '/api/v1/auth/logout',
+      {
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      },
+      false
+    );
   } catch {
-    // Server unreachable — token will expire naturally.
+    // Server unreachable — tokens will expire naturally.
   }
   await clearTokens();
 }
@@ -229,7 +239,8 @@ export async function logout() {
 //
 // Timeout: 90s — hybrid mode can run two sequential Gemini API calls
 // (recognition + nutrition estimation) that each take 10-20s.
-// Auto-retry: 1 retry on timeout/network error before surfacing the error.
+// Auto-retry: refreshes expired access token on 401, and retries once on
+// timeout/network error before surfacing the error.
 // ---------------------------------------------------------------------------
 export class AbortError extends Error {
   constructor(msg = 'Analysis cancelled') { super(msg); this.name = 'AbortError'; }
@@ -237,6 +248,10 @@ export class AbortError extends Error {
 
 class RetryableError extends Error {
   constructor(msg: string) { super(msg); this.name = 'RetryableError'; }
+}
+
+class AuthExpiredError extends Error {
+  constructor(msg = 'Access token expired') { super(msg); this.name = 'AuthExpiredError'; }
 }
 
 function _doAnalyzeXHR(
@@ -302,8 +317,9 @@ function _doAnalyzeXHR(
         } catch {
           reject(new Error('Invalid response from server'));
         }
+      } else if (xhr.status === 401) {
+        reject(new AuthExpiredError());
       } else if (xhr.status === 503 || xhr.status === 502) {
-        // Server waking up or overloaded — retryable
         reject(new RetryableError(`Server busy (${xhr.status}) — retrying`));
       } else {
         try {
@@ -344,6 +360,18 @@ export async function analyzeImage(
     return await _doAnalyzeXHR(imageUri, 90000, options);
   } catch (e: any) {
     if (e.name === 'AbortError') throw e;
+    if (e.name === 'AuthExpiredError') {
+      // Refresh token if available; if refresh fails, clear stale token and retry anonymously
+      if (refreshToken) {
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) {
+          await clearTokens();
+        }
+      } else {
+        await clearTokens();
+      }
+      return await _doAnalyzeXHR(imageUri, 90000, options);
+    }
     if (e.name !== 'RetryableError') throw e;
     console.log(`[analyze] ${e.message}`);
   }
@@ -366,16 +394,48 @@ export async function analyzeImage(
 }
 
 // ---------------------------------------------------------------------------
-// History API
+// History API (with offline cache for page 1)
 // ---------------------------------------------------------------------------
 export async function getHistory(page = 1, perPage = 20) {
-  return request(`/api/v1/history?page=${page}&per_page=${perPage}`);
+  try {
+    const data = await request(`/api/v1/history?page=${page}&per_page=${perPage}`);
+    if (page === 1) {
+      setCache('history_page_1', data);
+    }
+    return data;
+  } catch (e) {
+    if (page === 1) {
+      const cached = getCache<any>('history_page_1');
+      if (cached) return cached;
+    }
+    throw e;
+  }
 }
 
-export async function logMeal(foodsJson: any[], totalsJson?: any) {
+export async function logMeal(foodsJson: any[], totalsJson?: any, mealType?: string) {
   return request('/api/v1/history', {
     method: 'POST',
-    body: JSON.stringify({ foods_json: foodsJson, totals_json: totalsJson }),
+    body: JSON.stringify({
+      foods_json: foodsJson,
+      totals_json: totalsJson,
+      meal_type: mealType,
+    }),
+  });
+}
+
+export async function updateMeal(
+  mealId: number,
+  foodsJson: any[],
+  totalsJson?: any,
+  mealType?: string
+) {
+  return request(`/api/v1/history/${mealId}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      foods_json: foodsJson,
+      totals_json: totalsJson,
+      meal_type: mealType,
+    }),
   });
 }
 
@@ -384,44 +444,99 @@ export async function deleteMeal(mealId: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Profile API
+// Profile API (with offline cache)
 // ---------------------------------------------------------------------------
 export async function getProfile() {
-  return request('/api/v1/profile');
+  try {
+    const data = await request('/api/v1/profile');
+    setCache('profile', data);
+    return data;
+  } catch (e) {
+    if (isLoggedIn()) {
+      const cached = getCache<any>('profile');
+      if (cached) return cached;
+    }
+    throw e;
+  }
 }
 
 export async function updateProfile(updates: any) {
-  return request('/api/v1/profile', {
+  const data = await request('/api/v1/profile', {
     method: 'PUT',
     body: JSON.stringify(updates),
   });
+  setCache('profile', data);
+  return data;
 }
 
 // ---------------------------------------------------------------------------
-// Summary API
+// Summary API (with client timezone offset + offline cache)
 // ---------------------------------------------------------------------------
 export async function getDailySummary() {
-  return request('/api/v1/daily-summary');
+  const tz = getClientTzOffsetMinutes();
+  try {
+    const data = await request(`/api/v1/daily-summary?tz_offset_minutes=${tz}`);
+    setCache('daily_summary', data);
+    return data;
+  } catch (e) {
+    if (isLoggedIn()) {
+      const cached = getCache<any>('daily_summary');
+      if (cached) return cached;
+    }
+    throw e;
+  }
 }
 
 export async function getWeeklyReport() {
-  return request('/api/v1/weekly-report');
+  const tz = getClientTzOffsetMinutes();
+  try {
+    const data = await request(`/api/v1/weekly-report?tz_offset_minutes=${tz}`);
+    setCache('weekly_report', data);
+    return data;
+  } catch (e) {
+    if (isLoggedIn()) {
+      const cached = getCache<any>('weekly_report');
+      if (cached) return cached;
+    }
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Foods API
+// Foods API (with offline cache)
 // ---------------------------------------------------------------------------
 export async function getFoods() {
-  return request('/api/v1/foods');
+  try {
+    const data = await request('/api/v1/foods');
+    setCache('foods_catalog', data);
+    return data;
+  } catch (e) {
+    const cached = getCache<any>('foods_catalog');
+    if (cached) return cached;
+    throw e;
+  }
 }
 
 export async function getFoodDetail(foodId: number) {
-  return request(`/api/v1/foods/${foodId}`);
+  const cacheKey = `food_detail_${foodId}`;
+  try {
+    const data = await request(`/api/v1/foods/${foodId}`);
+    setCache(cacheKey, data);
+    return data;
+  } catch (e) {
+    const cached = getCache<any>(cacheKey);
+    if (cached) return cached;
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Admin API — review Gemini-estimated dishes and promote them to verified
+// Admin API — model management + dish-nutrition review
 // ---------------------------------------------------------------------------
+export async function getModelInfo() {
+  return request('/api/admin/model-info');
+}
+
 export async function getReviewQueue(page = 1, perPage = 20, status = 'pending') {
   return request(`/api/admin/review-queue?status=${status}&page=${page}&per_page=${perPage}`);
 }

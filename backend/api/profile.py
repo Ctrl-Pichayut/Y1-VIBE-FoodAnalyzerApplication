@@ -9,7 +9,8 @@ POST /api/v1/auth/refresh — Refresh access token.
 """
 
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import Optional
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -18,14 +19,14 @@ from sqlalchemy.orm import Session
 from core.auth import (
     hash_password, verify_password,
     create_access_token, create_refresh_token, decode_token,
-    get_current_user,
+    get_current_user, _is_token_revoked,
 )
 from core.config import get_config
 from core.database import get_db
 from core.models import User, RevokedToken
 from core.nutrition import calculate_daily_targets
 from core.schemas import (
-    UserRegister, UserLogin, TokenResponse, RefreshRequest,
+    UserRegister, UserLogin, TokenResponse, RefreshRequest, LogoutRequest,
     ProfileUpdate, ProfileResponse,
 )
 
@@ -49,12 +50,40 @@ def _is_admin_email(email: str) -> bool:
     return email in admin_emails
 
 
+def _revoke_raw_token(raw_token: str, db: Session) -> None:
+    """Decode a JWT and insert its JTI into revoked_tokens if not already present."""
+    try:
+        payload = decode_token(raw_token)
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if jti and not _is_token_revoked(jti, db):
+            revoked = RevokedToken(
+                jti=jti,
+                expires_at=datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None,
+            )
+            db.add(revoked)
+    except Exception:
+        pass  # Token already expired or invalid
+
+
+def _prune_expired_tokens(db: Session) -> None:
+    """Remove expired JWT revocation rows to prevent unbounded table growth."""
+    try:
+        now = datetime.now(timezone.utc)
+        db.query(RevokedToken).filter(
+            RevokedToken.expires_at.isnot(None),
+            RevokedToken.expires_at < now,
+        ).delete(synchronize_session=False)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
 @router.post("/auth/register", response_model=TokenResponse)
 @limiter.limit("3/hour")
-async def register(request: Request, data: UserRegister, db: Session = Depends(get_db)):
+def register(request: Request, data: UserRegister, db: Session = Depends(get_db)):
     """Create a new user account. Body stats are optional but, when provided,
     they let daily targets be computed from signup rather than the generic defaults."""
     existing = db.query(User).filter(User.email == data.email).first()
@@ -79,12 +108,13 @@ async def register(request: Request, data: UserRegister, db: Session = Depends(g
     return TokenResponse(
         access_token=create_access_token({"sub": str(user.id)}),
         refresh_token=create_refresh_token({"sub": str(user.id)}),
+        is_admin=bool(user.is_admin),
     )
 
 
 @router.post("/auth/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
-async def login(request: Request, data: UserLogin, db: Session = Depends(get_db)):
+def login(request: Request, data: UserLogin, db: Session = Depends(get_db)):
     """Authenticate and receive JWT tokens."""
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not verify_password(data.password, user.hashed_password):
@@ -100,52 +130,57 @@ async def login(request: Request, data: UserLogin, db: Session = Depends(get_db)
     return TokenResponse(
         access_token=create_access_token({"sub": str(user.id)}),
         refresh_token=create_refresh_token({"sub": str(user.id)}),
+        is_admin=bool(user.is_admin),
     )
 
 
 @router.post("/auth/logout")
-async def logout(
+def logout(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    body: Optional[LogoutRequest] = Body(default=None),
     db: Session = Depends(get_db),
 ):
-    """P8 fix: Server-side logout — revokes the current access token.
-
-    The token's JTI (JWT ID) is stored in a revoked_tokens table. The
-    decode_token function checks this table before accepting a token.
-    """
-    try:
-        payload = decode_token(credentials.credentials)
-        jti = payload.get("jti")
-        exp = payload.get("exp")
-        if jti:
-            # Store the revoked token with its expiry so we can clean up later.
-            revoked = RevokedToken(
-                jti=jti,
-                expires_at=datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None,
-            )
-            db.add(revoked)
-            db.commit()
-    except Exception:
-        pass  # Token already expired or invalid — effectively logged out
+    """Server-side logout — revokes both the current access token and optional refresh token."""
+    _revoke_raw_token(credentials.credentials, db)
+    if body and body.refresh_token:
+        _revoke_raw_token(body.refresh_token, db)
+    _prune_expired_tokens(db)
+    db.commit()
 
     return {"status": "logged_out"}
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)
-async def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
-    """Exchange a refresh token for new access + refresh tokens."""
+def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
+    """Exchange a refresh token for new access + refresh tokens (with rotation)."""
     payload = decode_token(data.refresh_token)
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    jti = payload.get("jti")
+    if _is_token_revoked(jti, db):
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked")
 
     user_id = payload.get("sub")
     user = db.query(User).filter(User.id == int(user_id)).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
+    # Rotate refresh token: revoke the old refresh token JTI
+    exp = payload.get("exp")
+    if jti:
+        db.add(
+            RevokedToken(
+                jti=jti,
+                expires_at=datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None,
+            )
+        )
+        db.commit()
+
     return TokenResponse(
         access_token=create_access_token({"sub": str(user.id)}),
         refresh_token=create_refresh_token({"sub": str(user.id)}),
+        is_admin=bool(user.is_admin),
     )
 
 
@@ -153,7 +188,7 @@ async def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
 # Profile endpoints
 # ---------------------------------------------------------------------------
 @router.get("/profile")
-async def get_profile(current_user: User = Depends(get_current_user)):
+def get_profile(current_user: User = Depends(get_current_user)):
     """Get current user's profile with calculated daily targets."""
     targets = calculate_daily_targets(current_user)
 
@@ -174,7 +209,7 @@ async def get_profile(current_user: User = Depends(get_current_user)):
 
 
 @router.put("/profile")
-async def update_profile(
+def update_profile(
     updates: ProfileUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

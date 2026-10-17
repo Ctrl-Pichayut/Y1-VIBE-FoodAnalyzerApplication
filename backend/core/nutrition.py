@@ -3,14 +3,24 @@ Nutrition service — loads nutritional data from JSON, computes health scores,
 and provides fallback lookup via Open Food Facts API.
 """
 
+from collections import OrderedDict
+import difflib
 import json
 import math
 import re
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
-import httpx
-from rapidfuzz import process, fuzz
+try:
+    import httpx
+except ImportError:
+    httpx = None  # type: ignore
+
+try:
+    from rapidfuzz import process, fuzz
+except ImportError:
+    process = None  # type: ignore
+    fuzz = None  # type: ignore
 
 
 # ---------------------------------------------------------------------------
@@ -23,6 +33,7 @@ _DEFAULT_TARGETS = {
     "fat": 65,
     "carbs": 300,
     "fiber": 25,
+    "sugar": 50,
     "sodium_mg": 2300,
 }
 
@@ -32,6 +43,17 @@ _ACTIVITY_MULTIPLIERS = {
     "moderate": 1.55,
     "active": 1.725,
     "very_active": 1.9,
+}
+
+# Macro calorie splits (protein_ratio, fat_ratio, carbs_ratio) by dietary_mode
+_DIETARY_MACRO_SPLITS = {
+    "standard":     (0.25, 0.25, 0.50),
+    "balanced":     (0.25, 0.25, 0.50),
+    "high_protein": (0.35, 0.25, 0.40),
+    "keto":         (0.25, 0.70, 0.05),
+    "low_carb":     (0.30, 0.50, 0.20),
+    "vegetarian":   (0.20, 0.25, 0.55),
+    "vegan":        (0.20, 0.20, 0.60),
 }
 
 
@@ -50,13 +72,26 @@ def calculate_daily_targets(user) -> Dict[str, float]:
     """
     Compute TDEE-based daily nutritional targets for a user.
     Uses the Mifflin-St Jeor equation with a gender-aware offset
-    (+5 male, -161 female, midpoint for other).
+    (+5 male, -161 female, midpoint for other) and adjusts macro ratios
+    based on `user.dietary_mode`.
 
     Returns generic defaults when weight/height/age are missing, so partially
     onboarded users still get sensible goals until their profile is complete.
     """
+    mode_key = (getattr(user, "dietary_mode", None) or "standard").lower().strip()
+    p_ratio, f_ratio, c_ratio = _DIETARY_MACRO_SPLITS.get(mode_key, (0.25, 0.25, 0.50))
+
     if not all([user.weight_kg, user.height_cm, user.age]):
-        return dict(_DEFAULT_TARGETS)
+        base_cal = _DEFAULT_TARGETS["calories"]
+        return {
+            "calories": base_cal,
+            "protein": round(base_cal * p_ratio / 4),
+            "fat": round(base_cal * f_ratio / 9),
+            "carbs": round(base_cal * c_ratio / 4),
+            "fiber": 25,
+            "sugar": 25 if mode_key in ("keto", "low_carb") else 50,
+            "sodium_mg": 2300,
+        }
 
     # Mifflin-St Jeor BMR offset by gender
     offset = {
@@ -77,10 +112,11 @@ def calculate_daily_targets(user) -> Dict[str, float]:
 
     return {
         "calories": round(tdee),
-        "protein": round(tdee * 0.25 / 4),   # 25% from protein, 4 cal/g
-        "fat": round(tdee * 0.25 / 9),       # 25% from fat, 9 cal/g
-        "carbs": round(tdee * 0.50 / 4),     # 50% from carbs, 4 cal/g
+        "protein": round(tdee * p_ratio / 4),
+        "fat": round(tdee * f_ratio / 9),
+        "carbs": round(tdee * c_ratio / 4),
         "fiber": 25 if tdee < 2500 else 30,
+        "sugar": 25 if mode_key in ("keto", "low_carb") else round(tdee * 0.10 / 4),
         "sodium_mg": 2300,
     }
 
@@ -89,37 +125,49 @@ class NutritionService:
     """
     Manages nutritional data for all food classes.
     - Primary source: local nutrition_db.json
-    - Fallback: Open Food Facts API
+    - Fallback: Open Food Facts API (with bounded LRU cache)
     - Computes health scores per the spec formula
     """
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, cache_size: int = 50):
+        from collections import OrderedDict
         self.db_path = db_path
+        self.cache_size = max(1, cache_size)
         self.nutrition_data: Dict[str, Dict[str, Any]] = {}
+        self._lower_map: Dict[str, str] = {}
+        self._normalized_choices: Dict[str, str] = {}
+        self._fallback_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
         self._load()
 
     def _load(self) -> None:
-        """Load nutrition database from JSON file."""
+        """Load nutrition database from JSON file and precompute lookup indices."""
         if self.db_path.exists():
             with open(self.db_path, "r", encoding="utf-8") as f:
                 self.nutrition_data = json.load(f)
         else:
             self.nutrition_data = {}
 
+        self._lower_map = {k.lower(): k for k in self.nutrition_data.keys()}
+        self._normalized_choices = {k: _normalize_name(k) for k in self.nutrition_data.keys()}
+
+    def canonicalize_name(self, food_name: str) -> str:
+        """Return canonical key from nutrition_db.json if matched, else original name."""
+        if food_name in self.nutrition_data:
+            return food_name
+        canon = self._lower_map.get(food_name.lower())
+        return canon if canon is not None else food_name
+
     def get_nutrition(self, food_name: str) -> Optional[Dict[str, Any]]:
         """
-        Look up nutritional data by food name.
+        Look up nutritional data by food name in O(1).
         Tries exact match first, then case-insensitive.
         """
-        # Exact match
         if food_name in self.nutrition_data:
             return self.nutrition_data[food_name]
 
-        # Case-insensitive search
-        food_lower = food_name.lower()
-        for key, value in self.nutrition_data.items():
-            if key.lower() == food_lower:
-                return value
+        canon = self._lower_map.get(food_name.lower())
+        if canon is not None:
+            return self.nutrition_data[canon]
 
         return None
 
@@ -129,51 +177,62 @@ class NutritionService:
         if not self.nutrition_data:
             return None
 
-        # U1 fix: Use rapidfuzz for O(1) near-instant lookups instead of SequenceMatcher in a loop.
-        choices = {k: _normalize_name(k) for k in self.nutrition_data.keys()}
-        match = process.extractOne(
-            _normalize_name(food_name),
-            choices,
-            scorer=fuzz.WRatio,
-            score_cutoff=threshold * 100
-        )
+        query_norm = _normalize_name(food_name)
+        if process is not None and fuzz is not None:
+            match = process.extractOne(
+                query_norm,
+                self._normalized_choices,
+                scorer=fuzz.WRatio,
+                score_cutoff=threshold * 100
+            )
+            if match:
+                db_key = match[2]
+                return db_key, self.nutrition_data[db_key]
+            return None
 
-        if match:
-            # match is (matched_value, score, key)
-            db_key = match[2]
-            return db_key, self.nutrition_data[db_key]
+        # Stdlib fallback using difflib when rapidfuzz is not installed
+        best_key = None
+        best_ratio = 0.0
+        for db_key, norm_val in self._normalized_choices.items():
+            ratio = difflib.SequenceMatcher(None, query_norm, norm_val).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_key = db_key
+        if best_key and best_ratio >= threshold:
+            return best_key, self.nutrition_data[best_key]
         return None
 
     def compute_health_score(self, per_100g: Dict[str, float], food_name: str = "") -> Dict[str, Any]:
-        # U3 fix: Upgraded health score to use micronutrients, DRV normalization, and category bonus.
         fiber = per_100g.get("fiber", 0)
         protein = per_100g.get("protein", 0)
         saturated_fat = per_100g.get("saturated_fat_g", 0)
         sugar = per_100g.get("sugar", 0)
         sodium = per_100g.get("sodium_mg", 0)
 
-        # Vitamins & Minerals DRV normalization (0-5 scale each)
-        vit_c = min(per_100g.get("vitamin_c_mg", 0) / 90 * 5, 5) # 90mg DRV
-        vit_a = min(per_100g.get("vitamin_a_mcg", 0) / 900 * 5, 5) # 900mcg DRV
-        iron = min(per_100g.get("iron_mg", 0) / 18 * 5, 5) # 18mg DRV
-        calcium = min(per_100g.get("calcium_mg", 0) / 1300 * 5, 5) # 1300mg DRV
-        potassium = min(per_100g.get("potassium_mg", 0) / 4700 * 5, 5) # 4700mg DRV
-        
+        # Vitamins & Minerals DRV normalization
+        # Vitamin C is always tracked in nutrition_db.json and Gemini estimates;
+        # scale Vitamin C up to 10 pts, plus optional bonus if extra micronutrients are present.
+        vit_c = min(per_100g.get("vitamin_c_mg", 0) / 90 * 10, 10)  # 90mg DRV
+        vit_a = min(per_100g.get("vitamin_a_mcg", 0) / 900 * 5, 5)
+        iron = min(per_100g.get("iron_mg", 0) / 18 * 5, 5)
+        calcium = min(per_100g.get("calcium_mg", 0) / 1300 * 5, 5)
+        potassium = min(per_100g.get("potassium_mg", 0) / 4700 * 5, 5)
+
         micronutrients = vit_c + vit_a + iron + calcium + potassium
-        
+
         score = 50
         score += fiber * 3
         score += protein * 2
         score += micronutrients * 1.5
         score -= saturated_fat * 3
         score -= sugar * 2
-        score -= (sodium / 2300) * 15 # Normalized penalty for sodium (2300mg DRV)
+        score -= (sodium / 2300) * 15  # Normalized penalty for sodium (2300mg DRV)
 
         # Category bonus
         name_lower = food_name.lower()
-        if any(kw in name_lower for kw in ["salad", "veg", "spinach", "kale", "broccoli"]):
+        if any(kw in name_lower for kw in ["salad", "veg", "spinach", "kale", "broccoli", "morning glory", "cabbage"]):
             score += 10
-        elif any(kw in name_lower for kw in ["fruit", "apple", "berry", "orange"]):
+        elif any(kw in name_lower for kw in ["fruit", "apple", "berry", "orange", "papaya", "mango", "banana"]):
             score += 5
 
         score = max(0, min(100, round(score)))
@@ -276,8 +335,16 @@ class NutritionService:
     async def fallback_lookup(self, food_name: str) -> Optional[Dict[str, Any]]:
         """
         Query Open Food Facts API as fallback for unknown foods.
-        Returns per_100g nutrition data if found.
+        Returns per_100g nutrition data if found, with bounded LRU caching.
         """
+        cache_key = _normalize_name(food_name)
+        if not cache_key:
+            return None
+
+        if cache_key in self._fallback_cache:
+            self._fallback_cache.move_to_end(cache_key)
+            return dict(self._fallback_cache[cache_key])
+
         try:
             search_url = "https://world.openfoodfacts.org/cgi/search.pl"
             params = {
@@ -297,16 +364,24 @@ class NutritionService:
                     return None
 
                 nutriments = products[0].get("nutriments", {})
-                return {
-                    "calories": nutriments.get("energy-kcal_100g", 0),
-                    "protein": nutriments.get("proteins_100g", 0),
-                    "fat": nutriments.get("fat_100g", 0),
-                    "carbs": nutriments.get("carbohydrates_100g", 0),
-                    "fiber": nutriments.get("fiber_100g", 0),
-                    "sugar": nutriments.get("sugars_100g", 0),
-                    "sodium_mg": nutriments.get("sodium_100g", 0) * 1000,
-                    "saturated_fat_g": nutriments.get("saturated-fat_100g", 0),
-                    "vitamin_c_mg": nutriments.get("vitamin-c_100g", 0),
+                calories = float(nutriments.get("energy-kcal_100g") or 0)
+                if calories <= 0:
+                    return None
+
+                result = {
+                    "calories": calories,
+                    "protein": float(nutriments.get("proteins_100g") or 0),
+                    "fat": float(nutriments.get("fat_100g") or 0),
+                    "carbs": float(nutriments.get("carbohydrates_100g") or 0),
+                    "fiber": float(nutriments.get("fiber_100g") or 0),
+                    "sugar": float(nutriments.get("sugars_100g") or 0),
+                    "sodium_mg": float(nutriments.get("sodium_100g") or 0) * 1000,
+                    "saturated_fat_g": float(nutriments.get("saturated-fat_100g") or 0),
+                    "vitamin_c_mg": float(nutriments.get("vitamin-c_100g") or 0),
                 }
+                self._fallback_cache[cache_key] = result
+                while len(self._fallback_cache) > self.cache_size:
+                    self._fallback_cache.popitem(last=False)
+                return dict(result)
         except Exception:
             return None

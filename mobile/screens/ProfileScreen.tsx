@@ -46,6 +46,27 @@ const GENDERS = [
   { id: 'other', label: 'Other' },
 ];
 
+const DIETARY_MODES = [
+  { id: 'standard', label: 'Standard Balanced', sub: '25% Protein · 25% Fat · 50% Carbs' },
+  { id: 'high_protein', label: 'High Protein', sub: '35% Protein · 25% Fat · 40% Carbs' },
+  { id: 'low_carb', label: 'Low Carb', sub: '30% Protein · 45% Fat · 25% Carbs' },
+  { id: 'keto', label: 'Ketogenic (Keto)', sub: '25% Protein · 70% Fat · 5% Carbs' },
+  { id: 'vegetarian', label: 'Vegetarian', sub: '20% Protein · 30% Fat · 50% Carbs' },
+  { id: 'vegan', label: 'Plant-Based / Vegan', sub: '20% Protein · 25% Fat · 55% Carbs' },
+];
+
+const COMMON_ALLERGENS = [
+  { id: 'peanuts', label: 'Peanuts' },
+  { id: 'tree_nuts', label: 'Tree Nuts' },
+  { id: 'shellfish', label: 'Shellfish' },
+  { id: 'fish', label: 'Fish' },
+  { id: 'eggs', label: 'Eggs' },
+  { id: 'soy', label: 'Soy' },
+  { id: 'gluten', label: 'Gluten / Wheat' },
+  { id: 'dairy', label: 'Dairy / Milk' },
+  { id: 'sesame', label: 'Sesame' },
+];
+
 export default function ProfileScreen({ navigation }: any) {
   const { setIsAdmin } = useContext(AuthContext);
   const [profile, setProfile] = useState<any>(null);
@@ -68,6 +89,7 @@ export default function ProfileScreen({ navigation }: any) {
     try {
       const data = await api.getProfile();
       setProfile(data);
+      setIsAdmin(!!data.is_admin);
       setForm({
         weight_kg: data.weight_kg ? String(data.weight_kg) : '',
         height_cm: data.height_cm ? String(data.height_cm) : '',
@@ -75,12 +97,23 @@ export default function ProfileScreen({ navigation }: any) {
         gender: data.gender || 'male',
         activity_level: data.activity_level || 'moderate',
         goal: data.goal || 'maintain',
+        dietary_mode: data.dietary_mode || 'standard',
+        allergens: Array.isArray(data.allergens) ? data.allergens : [],
       });
     } catch {
       setProfile(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleAllergen = (allergenId: string) => {
+    const current: string[] = Array.isArray(form.allergens) ? form.allergens : [];
+    const exists = current.includes(allergenId);
+    const next = exists
+      ? current.filter((a) => a !== allergenId)
+      : [...current, allergenId];
+    setForm({ ...form, allergens: next });
   };
 
   const validateEditForm = (): boolean => {
@@ -110,6 +143,8 @@ export default function ProfileScreen({ navigation }: any) {
         gender: form.gender,
         activity_level: form.activity_level,
         goal: form.goal,
+        dietary_mode: form.dietary_mode || 'standard',
+        allergens: Array.isArray(form.allergens) ? form.allergens : [],
       };
       if (form.weight_kg) payload.weight_kg = parseFloat(form.weight_kg);
       if (form.height_cm) payload.height_cm = parseFloat(form.height_cm);
@@ -377,6 +412,52 @@ export default function ProfileScreen({ navigation }: any) {
                 })}
               </View>
 
+              {/* Dietary Mode */}
+              <Text style={styles.fieldLabel}>Dietary Mode (Macro Split)</Text>
+              <View style={styles.chipStack}>
+                {DIETARY_MODES.map((dm) => {
+                  const isSelected = (form.dietary_mode || 'standard') === dm.id;
+                  return (
+                    <TouchableOpacity
+                      key={dm.id}
+                      style={[styles.descriptiveChip, isSelected && styles.descriptiveChipActive]}
+                      onPress={() => setForm({ ...form, dietary_mode: dm.id })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.descriptiveChipTitle, isSelected && styles.descriptiveChipTitleActive]}>
+                        {dm.label}
+                      </Text>
+                      <Text style={[styles.descriptiveChipSub, isSelected && styles.descriptiveChipSubActive]}>
+                        {dm.sub}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Allergens */}
+              <Text style={styles.fieldLabel}>Food Allergies & Restrictions</Text>
+              <Text style={styles.allergenHelperText}>
+                We will alert you when a scanned dish contains any of your selected allergens.
+              </Text>
+              <View style={styles.allergenChipsWrap}>
+                {COMMON_ALLERGENS.map((alg) => {
+                  const selected = Array.isArray(form.allergens) && form.allergens.includes(alg.id);
+                  return (
+                    <TouchableOpacity
+                      key={alg.id}
+                      style={[styles.allergenChip, selected && styles.allergenChipActive]}
+                      onPress={() => toggleAllergen(alg.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.allergenChipText, selected && styles.allergenChipTextActive]}>
+                        {selected ? `⚠ ${alg.label}` : alg.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               <TouchableOpacity
                 style={[styles.btnPrimary, saving && { opacity: 0.7 }]}
                 onPress={handleSave}
@@ -398,6 +479,8 @@ export default function ProfileScreen({ navigation }: any) {
               <StatRow label="Biological Sex" value={profile.gender ? capitalize(profile.gender) : '—'} />
               <StatRow label="Activity Level" value={formatActivity(profile.activity_level)} />
               <StatRow label="Goal" value={formatGoal(profile.goal)} />
+              <StatRow label="Dietary Mode" value={formatDietaryMode(profile.dietary_mode)} />
+              <StatRow label="Allergies" value={formatAllergens(profile.allergens)} />
             </View>
           )}
         </View>
@@ -680,6 +763,18 @@ function formatGoal(goal?: string): string {
   return match ? `${match.label} (${match.sub})` : '—';
 }
 
+function formatDietaryMode(mode?: string): string {
+  const match = DIETARY_MODES.find((d) => d.id === (mode || 'standard'));
+  return match ? match.label : capitalize(mode || 'standard');
+}
+
+function formatAllergens(allergens?: string[]): string {
+  if (!Array.isArray(allergens) || allergens.length === 0) return 'None';
+  return allergens
+    .map((id) => COMMON_ALLERGENS.find((a) => a.id === id)?.label || capitalize(id))
+    .join(', ');
+}
+
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.statRow}>
@@ -944,6 +1039,42 @@ const styles = StyleSheet.create({
   },
   genderChipTextActive: {
     color: '#FFFFFF',
+    fontFamily: fonts.bodySemiBold,
+  },
+
+  // Allergen Multi-Select Chips
+  allergenHelperText: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  allergenChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+    marginTop: 2,
+  },
+  allergenChip: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  allergenChipActive: {
+    borderColor: colors.error,
+    backgroundColor: 'rgba(185, 28, 28, 0.1)',
+  },
+  allergenChipText: {
+    fontSize: 12,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textPrimary,
+  },
+  allergenChipTextActive: {
+    color: colors.error,
     fontFamily: fonts.bodySemiBold,
   },
 

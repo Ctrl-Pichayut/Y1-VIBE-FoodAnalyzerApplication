@@ -4,7 +4,7 @@ SQLAlchemy ORM models for users, food items, meal logs, and model versions.
 
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, Boolean, Text, JSON
+    Column, Integer, String, Float, DateTime, Boolean, Text, JSON, ForeignKey, Index
 )
 from core.database import Base
 
@@ -26,11 +26,11 @@ class User(Base):
     gender = Column(String(20), default=None)  # male, female, other (drives Mifflin-St Jeor offset)
     activity_level = Column(String(50), default="moderate")  # sedentary, light, moderate, active, very_active
     goal = Column(String(50), default="maintain")  # lose, maintain, gain
-    dietary_mode = Column(String(50), default="standard")  # standard, vegetarian, vegan, keto, etc.
+    dietary_mode = Column(String(50), default="standard")  # standard, high_protein, keto, vegetarian, vegan
     allergens = Column(JSON, default=list)  # ["shellfish", "eggs", ...]
     is_admin = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=_utcnow)
-    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class FoodItem(Base):
@@ -47,11 +47,15 @@ class FoodItem(Base):
 
 class MealLog(Base):
     __tablename__ = "meal_logs"
+    __table_args__ = (
+        Index("ix_meal_logs_user_timestamp", "user_id", "timestamp"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True, nullable=False)
-    timestamp = Column(DateTime, default=_utcnow)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow)
     scan_id = Column(String(36), index=True, nullable=True)
+    meal_type = Column(String(30), default="snack", nullable=True)  # breakfast, lunch, dinner, snack
     foods_json = Column(JSON, nullable=False)  # list of detected foods + nutrition
     totals_json = Column(JSON, nullable=True)  # aggregated totals
 
@@ -63,23 +67,12 @@ class ModelVersion(Base):
     version_tag = Column(String(50), nullable=False)
     pt_path = Column(String(500), nullable=False)
     class_count = Column(Integer, nullable=False)
-    uploaded_at = Column(DateTime, default=_utcnow)
+    uploaded_at = Column(DateTime(timezone=True), default=_utcnow)
     is_active = Column(Boolean, default=False)
 
 
 class NutritionReview(Base):
-    """Admin-curated dish nutrition, sourced from Gemini estimates.
-
-    When the analyze pipeline encounters a dish that's neither in
-    nutrition_db.json nor a fuzzy match, and Gemini estimates its nutrition,
-    a row is inserted here with status='pending'. An admin reviews the
-    estimate in the mobile app and either promotes it (status='promoted') or
-    rejects it.
-
-    Promoted rows are queried by the analyze pipeline as a Tier 0 nutrition
-    source -- once promoted, that dish never calls Gemini again. Storing these
-    in Postgres (Supabase) means promotions persist across redeploys.
-    """
+    """Admin-curated dish nutrition, sourced from Gemini estimates."""
     __tablename__ = "nutrition_reviews"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -87,21 +80,16 @@ class NutritionReview(Base):
     per_100g = Column(JSON, nullable=False)         # same shape as nutrition_db.json values
     allergens = Column(JSON, default=list)
     status = Column(String(20), default="pending")  # "pending" | "promoted" | "rejected"
-    created_at = Column(DateTime, default=_utcnow)
-    reviewed_at = Column(DateTime, nullable=True)
-    promoted_by = Column(Integer, nullable=True)    # User.id of the admin
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    promoted_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class RevokedToken(Base):
-    """P8 fix: Server-side token revocation — stores JTIs of logged-out tokens.
-
-    The decode_token function checks this table before accepting a token.
-    Rows can be cleaned up periodically by deleting entries whose
-    expires_at is in the past.
-    """
+    """P8 fix: Server-side token revocation — stores JTIs of logged-out tokens."""
     __tablename__ = "revoked_tokens"
 
     id = Column(Integer, primary_key=True, index=True)
     jti = Column(String(36), unique=True, index=True, nullable=False)
-    revoked_at = Column(DateTime, default=_utcnow)
-    expires_at = Column(DateTime, nullable=True)  # for cleanup of expired entries
+    revoked_at = Column(DateTime(timezone=True), default=_utcnow)
+    expires_at = Column(DateTime(timezone=True), nullable=True)

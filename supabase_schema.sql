@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     activity_level VARCHAR(50) DEFAULT 'moderate',
     goal VARCHAR(50) DEFAULT 'maintain',
     dietary_mode VARCHAR(50) DEFAULT 'standard',
-    allergens JSON DEFAULT '[]'::json,
+    allergens JSONB DEFAULT '[]'::jsonb,
     is_admin BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -33,10 +33,10 @@ CREATE TABLE IF NOT EXISTS public.food_items (
     id SERIAL PRIMARY KEY,
     yolo_class_id INTEGER UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
-    nutrition_json JSON NOT NULL,
+    nutrition_json JSONB NOT NULL,
     health_score INTEGER DEFAULT 50,
-    tags JSON DEFAULT '[]'::json,
-    allergens JSON DEFAULT '[]'::json
+    tags JSONB DEFAULT '[]'::jsonb,
+    allergens JSONB DEFAULT '[]'::jsonb
 );
 
 CREATE INDEX IF NOT EXISTS ix_food_items_id ON public.food_items (id);
@@ -45,16 +45,20 @@ CREATE INDEX IF NOT EXISTS ix_food_items_yolo_class_id ON public.food_items (yol
 -- 3. Meal Logs Table
 CREATE TABLE IF NOT EXISTS public.meal_logs (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     scan_id VARCHAR(36),
-    foods_json JSON NOT NULL,
-    totals_json JSON
+    meal_type VARCHAR(30) DEFAULT 'snack',
+    foods_json JSONB NOT NULL,
+    totals_json JSONB
 );
+
+ALTER TABLE public.meal_logs ADD COLUMN IF NOT EXISTS meal_type VARCHAR(30) DEFAULT 'snack';
 
 CREATE INDEX IF NOT EXISTS ix_meal_logs_id ON public.meal_logs (id);
 CREATE INDEX IF NOT EXISTS ix_meal_logs_user_id ON public.meal_logs (user_id);
 CREATE INDEX IF NOT EXISTS ix_meal_logs_scan_id ON public.meal_logs (scan_id);
+CREATE INDEX IF NOT EXISTS ix_meal_logs_user_timestamp ON public.meal_logs (user_id, timestamp DESC);
 
 -- 4. Model Versions Table
 CREATE TABLE IF NOT EXISTS public.model_versions (
@@ -72,12 +76,12 @@ CREATE INDEX IF NOT EXISTS ix_model_versions_id ON public.model_versions (id);
 CREATE TABLE IF NOT EXISTS public.nutrition_reviews (
     id SERIAL PRIMARY KEY,
     dish_name VARCHAR(255) UNIQUE NOT NULL,
-    per_100g JSON NOT NULL,
-    allergens JSON DEFAULT '[]'::json,
+    per_100g JSONB NOT NULL,
+    allergens JSONB DEFAULT '[]'::jsonb,
     status VARCHAR(20) DEFAULT 'pending',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     reviewed_at TIMESTAMP WITH TIME ZONE,
-    promoted_by INTEGER
+    promoted_by INTEGER REFERENCES public.users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS ix_nutrition_reviews_id ON public.nutrition_reviews (id);

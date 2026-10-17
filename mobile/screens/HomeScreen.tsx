@@ -1,24 +1,45 @@
 /**
  * HomeScreen — Dashboard landing page.
- * Phase 4: Dashboard Polish
  *
  * Features:
  *   • Skeleton loading placeholders with Animated opacity pulse.
  *   • Hero "Calories remaining" card (target − eaten) with Space Grotesk 48 number.
- *   • Correct macro bar color logic (reaching protein goal is good, calories/carbs/fat overage warning).
- *   • Visual hierarchy order: Greeting → Calories remaining → Macros → Scan card → 7-day chart → Recent meals.
- *   • 7-day chart handles 0-value state with clean EmptyState; uses Inter labels.
+ *   • Today's Macros (Protein, Carbs, Fat) + Daily Guardrails (Fiber, Sugar, Sodium).
+ *   • Quick Scan Card with both "Open Camera" and "Search & Log Manually" (Part 4.1).
+ *   • 7-day chart with local-timezone YYYY-MM-DD weekday parsing (Part 1.6).
+ *   • Tappable Recent Meals with meal category badges.
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, RefreshControl, Dimensions,
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  Dimensions,
   Animated,
 } from 'react-native';
 import { BarChart } from 'react-native-chart-kit';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors, spacing, radii, getHealthColor, fonts, typography } from '../theme/tokens';
+import { colors, spacing, radii, getHealthColor, fonts } from '../theme/tokens';
 import * as api from '../services/api';
+import DishCorrectionModal from '../components/DishCorrectionModal';
+
+function formatLocalWeekday(dateStr: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length === 3 && !parts.some(isNaN)) {
+    const localDate = new Date(parts[0], parts[1] - 1, parts[2]);
+    return localDate.toLocaleDateString(undefined, { weekday: 'short' });
+  }
+  return new Date(dateStr).toLocaleDateString(undefined, { weekday: 'short' });
+}
+
+function formatMealTypeBadge(mealType?: string): string {
+  if (!mealType) return 'Meal';
+  return mealType.charAt(0).toUpperCase() + mealType.slice(1);
+}
 
 export default function HomeScreen({ navigation }: any) {
   const [summary, setSummary] = useState<any>(null);
@@ -27,6 +48,7 @@ export default function HomeScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [weeklyReport, setWeeklyReport] = useState<any>(null);
+  const [manualLogModalOpen, setManualLogModalOpen] = useState(false);
 
   const loadData = async (isRefresh = false) => {
     try {
@@ -60,6 +82,25 @@ export default function HomeScreen({ navigation }: any) {
       loadData();
     }, [])
   );
+
+  const handleManualDishSelected = (dishDetail: any) => {
+    setManualLogModalOpen(false);
+    const manualFood = {
+      ...dishDetail,
+      serving_estimate_g: 250,
+      confidence: 1.0,
+      source: 'nutrition_db',
+      verified: true,
+    };
+    navigation.navigate('ScanTab', {
+      screen: 'Result',
+      params: {
+        result: {
+          foods: [manualFood],
+        },
+      },
+    });
+  };
 
   const now = new Date();
   const hour = now.getHours();
@@ -96,196 +137,258 @@ export default function HomeScreen({ navigation }: any) {
   const hasChartData = chartValues.some((v: number) => v > 0);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.xxl }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            loadData(true);
-          }}
-        />
-      }
-    >
-      {/* 1. Greeting & Date Header */}
-      <View style={styles.headerBlock}>
-        <Text style={styles.appTitle}>Food Intelligence</Text>
-        <Text style={styles.greeting}>{greeting}</Text>
-        <Text style={styles.dateText}>{dateFormatted}</Text>
-      </View>
+    <>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.xxl }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              loadData(true);
+            }}
+          />
+        }
+      >
+        {/* 1. Greeting & Date Header */}
+        <View style={styles.headerBlock}>
+          <Text style={styles.appTitle}>Food Intelligence</Text>
+          <Text style={styles.greeting}>{greeting}</Text>
+          <Text style={styles.dateText}>{dateFormatted}</Text>
+        </View>
 
-      {/* 2. Hero Calories Remaining Card (if logged in) */}
-      {loggedIn && summary && (
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Calories Remaining</Text>
-          <View style={styles.calorieHeroRow}>
-            <Text
-              style={[
-                styles.calorieHeroNumber,
-                isOverTarget && { color: colors.limit },
-              ]}
-              maxFontSizeMultiplier={1.3}
-            >
-              {Math.abs(remainingCalories)}
-            </Text>
-            <View style={styles.calorieHeroSub}>
-              <Text style={[styles.calorieHeroCaption, isOverTarget && { color: colors.limit }]}>
-                {isOverTarget
-                  ? `kcal over goal (${targetCalories})`
-                  : `kcal left of ${targetCalories}`}
+        {/* 2. Hero Calories Remaining Card (if logged in) */}
+        {loggedIn && summary && (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>Calories Remaining</Text>
+            <View style={styles.calorieHeroRow}>
+              <Text
+                style={[
+                  styles.calorieHeroNumber,
+                  isOverTarget && { color: colors.limit },
+                ]}
+                maxFontSizeMultiplier={1.3}
+              >
+                {Math.abs(remainingCalories)}
               </Text>
-              <Text style={styles.calorieEatenCaption}>
-                {eatenCalories} kcal eaten today
-              </Text>
+              <View style={styles.calorieHeroSub}>
+                <Text style={[styles.calorieHeroCaption, isOverTarget && { color: colors.limit }]}>
+                  {isOverTarget
+                    ? `kcal over goal (${targetCalories})`
+                    : `kcal left of ${targetCalories}`}
+                </Text>
+                <Text style={styles.calorieEatenCaption}>
+                  {eatenCalories} kcal eaten today
+                </Text>
+              </View>
+            </View>
+
+            {/* Thin full-width calorie progress bar */}
+            <View style={styles.calorieProgressBg}>
+              <View
+                style={[
+                  styles.calorieProgressFill,
+                  {
+                    width: `${Math.min(100, Math.round((eatenCalories / targetCalories) * 100))}%`,
+                    backgroundColor: isOverTarget
+                      ? colors.limit
+                      : eatenCalories / targetCalories > 0.9
+                      ? colors.moderate
+                      : colors.accent,
+                  },
+                ]}
+              />
             </View>
           </View>
+        )}
 
-          {/* Thin full-width calorie progress bar */}
-          <View style={styles.calorieProgressBg}>
-            <View
-              style={[
-                styles.calorieProgressFill,
-                {
-                  width: `${Math.min(100, Math.round((eatenCalories / targetCalories) * 100))}%`,
-                  backgroundColor: isOverTarget
-                    ? colors.limit
-                    : eatenCalories / targetCalories > 0.9
-                    ? colors.moderate
-                    : colors.accent,
-                },
-              ]}
-            />
+        {/* 3. Daily Macros & Guardrails Card (if logged in) */}
+        {loggedIn && summary && (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>Today's Macros</Text>
+            <View style={styles.macroProgressGrid}>
+              <ProgressItem
+                label="Protein"
+                current={Math.round(summary.totals?.protein || 0)}
+                target={summary.targets?.protein || 50}
+                unit="g"
+                type="protein"
+              />
+              <ProgressItem
+                label="Carbs"
+                current={Math.round(summary.totals?.carbs || 0)}
+                target={summary.targets?.carbs || 300}
+                unit="g"
+                type="carbs"
+              />
+              <ProgressItem
+                label="Fat"
+                current={Math.round(summary.totals?.fat || 0)}
+                target={summary.targets?.fat || 65}
+                unit="g"
+                type="fat"
+              />
+            </View>
+
+            {/* Micronutrients / Guardrails Row (Fiber, Sugar, Sodium) */}
+            <View style={styles.microSummaryRow}>
+              <View style={styles.microSummaryItem}>
+                <Text style={styles.microSummaryLabel}>Fiber</Text>
+                <Text style={styles.microSummaryValue}>
+                  {Math.round(summary.totals?.fiber || 0)} / {summary.targets?.fiber || 28}g
+                </Text>
+              </View>
+              <View style={styles.microSummaryItem}>
+                <Text style={styles.microSummaryLabel}>Sugar</Text>
+                <Text
+                  style={[
+                    styles.microSummaryValue,
+                    (summary.totals?.sugar || 0) > (summary.targets?.sugar || 50) && {
+                      color: colors.limit,
+                    },
+                  ]}
+                >
+                  {Math.round(summary.totals?.sugar || 0)} / {summary.targets?.sugar || 50}g
+                </Text>
+              </View>
+              <View style={styles.microSummaryItem}>
+                <Text style={styles.microSummaryLabel}>Sodium</Text>
+                <Text
+                  style={[
+                    styles.microSummaryValue,
+                    (summary.totals?.sodium_mg || 0) > (summary.targets?.sodium_mg || 2300) && {
+                      color: colors.limit,
+                    },
+                  ]}
+                >
+                  {Math.round(summary.totals?.sodium_mg || 0)} / {summary.targets?.sodium_mg || 2300}mg
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.mealsToday}>
+              {summary.meals_count || 0} meal{(summary.meals_count || 0) !== 1 ? 's' : ''} logged today
+            </Text>
           </View>
-        </View>
-      )}
+        )}
 
-      {/* 3. Daily Macros Grid Card (if logged in) */}
-      {loggedIn && summary && (
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Today's Macros</Text>
-          <View style={styles.macroProgressGrid}>
-            <ProgressItem
-              label="Protein"
-              current={Math.round(summary.totals?.protein || 0)}
-              target={summary.targets?.protein || 50}
-              unit="g"
-              type="protein"
-            />
-            <ProgressItem
-              label="Carbs"
-              current={Math.round(summary.totals?.carbs || 0)}
-              target={summary.targets?.carbs || 300}
-              unit="g"
-              type="carbs"
-            />
-            <ProgressItem
-              label="Fat"
-              current={Math.round(summary.totals?.fat || 0)}
-              target={summary.targets?.fat || 65}
-              unit="g"
-              type="fat"
-            />
-          </View>
-          <Text style={styles.mealsToday}>
-            {summary.meals_count || 0} meal{(summary.meals_count || 0) !== 1 ? 's' : ''} logged today
-          </Text>
-        </View>
-      )}
-
-      {/* 4. Quick Scan Card */}
-      <TouchableOpacity
-        style={styles.scanCard}
-        onPress={() => navigation.navigate('ScanTab')}
-        activeOpacity={0.88}
-      >
-        <Text style={styles.scanCardTitle}>Scan Food</Text>
-        <Text style={styles.scanCardBody}>
-          Take a photo or pick from gallery to identify dishes and analyze nutritional macros.
-        </Text>
-        <View style={styles.scanBtn}>
-          <Text style={styles.scanBtnText}>Open Camera</Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Not Logged In Promo Card */}
-      {!loggedIn && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Track Your Nutrition</Text>
-          <Text style={styles.cardBody}>
-            Create an account or log in to save your meals, configure personalized TDEE targets, and review your weekly trend.
+        {/* 4. Quick Scan & Manual Log Card */}
+        <View style={styles.scanCard}>
+          <Text style={styles.scanCardTitle}>Log a Meal</Text>
+          <Text style={styles.scanCardBody}>
+            Take a photo to detect dishes with AI, or search our verified food catalog to log manually.
           </Text>
           <TouchableOpacity
-            style={styles.outlineBtn}
-            onPress={() => navigation.navigate('Profile')}
-            activeOpacity={0.7}
+            style={styles.scanBtn}
+            onPress={() => navigation.navigate('ScanTab')}
+            activeOpacity={0.85}
           >
-            <Text style={styles.outlineBtnText}>Get Started / Log In</Text>
+            <Text style={styles.scanBtnText}>Open Camera</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.manualLogBtn}
+            onPress={() => setManualLogModalOpen(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.manualLogBtnText}>Search & Log Manually</Text>
           </TouchableOpacity>
         </View>
-      )}
 
-      {/* 5. 7-Day Calorie Trend Chart (Logged in) */}
-      {loggedIn && (
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>7-Day Calorie Trend</Text>
-          {hasChartData ? (
-            <BarChart
-              data={{
-                labels: chartDays.map((d: any) =>
-                  new Date(d.date).toLocaleDateString(undefined, { weekday: 'short' })
-                ),
-                datasets: [{ data: chartValues }],
-              }}
-              width={Dimensions.get('window').width - spacing.md * 4}
-              height={200}
-              yAxisLabel=""
-              yAxisSuffix=""
-              chartConfig={{
-                backgroundColor: colors.surface,
-                backgroundGradientFrom: colors.surface,
-                backgroundGradientTo: colors.surface,
-                decimalPlaces: 0,
-                color: (opacity = 1) => `rgba(13, 13, 13, ${opacity})`,
-                labelColor: () => colors.textSecondary,
-                barPercentage: 0.5,
-                propsForLabels: {
-                  fontFamily: fonts.body,
-                  fontSize: 10,
-                },
-              }}
-              style={{ marginVertical: 8, borderRadius: radii.card, marginLeft: -12 }}
-              showValuesOnTopOfBars
-            />
-          ) : (
-            <View style={styles.chartEmptyBox}>
-              <Text style={styles.chartEmptyText}>
-                No calorie data recorded this week yet.
-              </Text>
-              <Text style={styles.chartEmptySub}>
-                Scan meals to build your weekly nutrition trend.
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* 6. Recent Meals */}
-      {recentMeals.length > 0 && (
-        <View style={{ marginTop: spacing.xs }}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionLabel}>Recent Meals</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('History')} activeOpacity={0.7}>
-              <Text style={styles.seeAll}>See All</Text>
+        {/* Not Logged In Promo Card */}
+        {!loggedIn && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Track Your Nutrition</Text>
+            <Text style={styles.cardBody}>
+              Create an account or log in to save your meals, configure personalized TDEE targets, and review your weekly trend.
+            </Text>
+            <TouchableOpacity
+              style={styles.outlineBtn}
+              onPress={() => navigation.navigate('Profile')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.outlineBtnText}>Get Started / Log In</Text>
             </TouchableOpacity>
           </View>
-          {recentMeals.map((meal: any) => (
-            <RecentMealCard key={meal.id} meal={meal} />
-          ))}
-        </View>
-      )}
-    </ScrollView>
+        )}
+
+        {/* 5. 7-Day Calorie Trend Chart (Logged in) */}
+        {loggedIn && (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>7-Day Calorie Trend</Text>
+            {hasChartData ? (
+              <BarChart
+                data={{
+                  labels: chartDays.map((d: any) => formatLocalWeekday(d.date)),
+                  datasets: [{ data: chartValues }],
+                }}
+                width={Dimensions.get('window').width - spacing.md * 4}
+                height={200}
+                yAxisLabel=""
+                yAxisSuffix=""
+                chartConfig={{
+                  backgroundColor: colors.surface,
+                  backgroundGradientFrom: colors.surface,
+                  backgroundGradientTo: colors.surface,
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => `rgba(13, 13, 13, ${opacity})`,
+                  labelColor: () => colors.textSecondary,
+                  barPercentage: 0.5,
+                  propsForLabels: {
+                    fontFamily: fonts.body,
+                    fontSize: 10,
+                  },
+                }}
+                style={{ marginVertical: 8, borderRadius: radii.card, marginLeft: -12 }}
+                showValuesOnTopOfBars
+              />
+            ) : (
+              <View style={styles.chartEmptyBox}>
+                <Text style={styles.chartEmptyText}>
+                  No calorie data recorded this week yet.
+                </Text>
+                <Text style={styles.chartEmptySub}>
+                  Scan or log meals to build your weekly nutrition trend.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* 6. Recent Meals */}
+        {recentMeals.length > 0 && (
+          <View style={{ marginTop: spacing.xs }}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>Recent Meals</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('History')} activeOpacity={0.7}>
+                <Text style={styles.seeAll}>See All</Text>
+              </TouchableOpacity>
+            </View>
+            {recentMeals.map((meal: any) => (
+              <RecentMealCard
+                key={meal.id}
+                meal={meal}
+                onPress={() =>
+                  navigation.navigate('History', {
+                    screen: 'MealDetail',
+                    params: { meal },
+                  })
+                }
+              />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Manual Food Search Modal */}
+      <DishCorrectionModal
+        visible={manualLogModalOpen}
+        title="Log Food Manually"
+        subtitle="Select a dish to customize portion & log"
+        onSelect={handleManualDishSelected}
+        onClose={() => setManualLogModalOpen(false)}
+      />
+    </>
   );
 }
 
@@ -305,9 +408,6 @@ function ProgressItem({ label, current, target, unit, type }: ProgressItemProps)
   const pct = Math.min(100, Math.round(ratio * 100));
   const isOver = current > target;
 
-  // Color logic:
-  // Protein: always accent (green, exceeding protein target is good)
-  // Carbs & Fat: green <= 100%, moderate 100-110%, red > 110%
   let barColor = colors.accent;
   if (type !== 'protein') {
     if (ratio > 1.1) {
@@ -341,15 +441,25 @@ function ProgressItem({ label, current, target, unit, type }: ProgressItemProps)
 // ---------------------------------------------------------------------------
 // Recent Meal Card Component
 // ---------------------------------------------------------------------------
-function RecentMealCard({ meal }: { meal: any }) {
+function RecentMealCard({ meal, onPress }: { meal: any; onPress: () => void }) {
   const foods = meal.foods_json || [];
-  const time = new Date(meal.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const time = new Date(meal.timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
   const totalCal = meal.totals_json?.calories ? Math.round(meal.totals_json.calories) : 0;
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
       <View style={styles.mealHeader}>
-        <Text style={styles.mealTime}>{time}</Text>
+        <View style={styles.mealTimeRow}>
+          <Text style={styles.mealTime}>{time}</Text>
+          {meal.meal_type && (
+            <View style={styles.mealTypeBadge}>
+              <Text style={styles.mealTypeBadgeText}>{formatMealTypeBadge(meal.meal_type)}</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.mealCal}>{totalCal} kcal</Text>
       </View>
       {foods.slice(0, 3).map((f: any, i: number) => (
@@ -365,7 +475,7 @@ function RecentMealCard({ meal }: { meal: any }) {
       {foods.length > 3 && (
         <Text style={styles.moreText}>+{foods.length - 3} more items</Text>
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -463,6 +573,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
+  },
+  manualLogBtn: {
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: radii.button,
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  manualLogBtnText: {
+    fontSize: 14,
+    fontFamily: fonts.bodySemiBold,
+    color: '#FFFFFF',
   },
 
   // Generic Card
@@ -586,12 +709,34 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
   },
+  microSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  microSummaryItem: {
+    alignItems: 'center',
+  },
+  microSummaryLabel: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+  },
+  microSummaryValue: {
+    fontSize: 13,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
   mealsToday: {
     fontSize: 12,
     fontFamily: fonts.body,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: spacing.xs + 2,
@@ -632,12 +777,32 @@ const styles = StyleSheet.create({
   mealHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.sm,
+  },
+  mealTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   mealTime: {
     fontSize: 15,
     fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
+  },
+  mealTypeBadge: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  mealTypeBadgeText: {
+    fontSize: 10,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
   },
   mealCal: {
     fontSize: 16,

@@ -11,6 +11,7 @@ Dish review (promote Gemini estimates into verified nutrition):
   POST /api/admin/review/{review_id}   — Promote or reject a captured estimate.
 """
 
+import asyncio
 import tempfile, shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,7 @@ router = APIRouter()
 
 
 @router.get("/model-info")
-async def model_info(request: Request, admin: User = Depends(get_admin_user)):
+def model_info(request: Request, admin: User = Depends(get_admin_user)):
     config = request.app.state.config
     mm = request.app.state.model_manager
     return {
@@ -47,7 +48,8 @@ async def update_model(
     db: Session = Depends(get_db),
 ):
     """Hot-swap the active YOLO model. Admin only."""
-    if not file.filename.endswith((".pt", ".onnx")):
+    safe_filename = Path(file.filename or "").name
+    if not safe_filename.endswith((".pt", ".onnx")):
         raise HTTPException(400, "Model must be .pt or .onnx")
 
     base_dir = request.app.state.base_dir
@@ -55,21 +57,26 @@ async def update_model(
     mm = request.app.state.model_manager
     config_path = base_dir / "config.yaml"
 
-    # Save upload to temp file
-    tmp = base_dir / "models" / f"_upload_{file.filename}"
+    # Save upload to temp file using sanitized basename
+    tmp = base_dir / "models" / f"_upload_{safe_filename}"
     try:
         contents = await file.read()
         with open(tmp, "wb") as f:
             f.write(contents)
 
-        result = mm.hot_swap(tmp, version)
+        result = await asyncio.to_thread(mm.hot_swap, tmp, version)
 
         # Update config version
         config["model"]["version"] = version
         save_config(config_path, config)
 
         # Log to database
-        mv = ModelVersion(version_tag=version, pt_path=config["model"]["path"], class_count=result["class_count"], is_active=True)
+        mv = ModelVersion(
+            version_tag=version,
+            pt_path=config["model"]["path"],
+            class_count=result["class_count"],
+            is_active=True,
+        )
         db.query(ModelVersion).update({"is_active": False})
         db.add(mv)
         db.commit()
@@ -86,14 +93,14 @@ async def update_model(
 # Dish-nutrition review (promote Gemini estimates → verified)
 # ---------------------------------------------------------------------------
 @router.get("/review-queue")
-async def review_queue(
+def review_queue(
     status: str = Query("pending"),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    """List dishes awaiting admin review (default: pending)."""
+    """List dishes in the admin review queue (default: pending)."""
     if status not in ("pending", "promoted", "rejected", "all"):
         raise HTTPException(400, "status must be pending|promoted|rejected|all")
 
@@ -117,7 +124,7 @@ async def review_queue(
 
 
 @router.get("/review-queue/stats")
-async def review_queue_stats(
+def review_queue_stats(
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
@@ -130,33 +137,28 @@ async def review_queue_stats(
 
 
 @router.post("/review/{review_id}")
-async def submit_review(
+def submit_review(
     review_id: int,
     body: ReviewActionRequest,
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    """Promote or reject a captured Gemini nutrition estimate.
+    """Promote, re-edit, or reject a captured Gemini nutrition estimate.
 
     On 'promote', the optional per_100g/allergens override the captured
-    estimate — letting the admin correct values first. Once promoted, the
-    analyze pipeline returns this row's nutrition as verified (Tier 0),
-    so future scans never call Gemini for this dish again.
+    estimate — letting the admin correct values first (or re-edit an already
+    promoted/rejected item). Once promoted, the analyze pipeline returns this
+    row's nutrition as verified (Tier 0).
     """
     row = db.query(NutritionReview).filter(NutritionReview.id == review_id).first()
     if row is None:
         raise HTTPException(404, "Review item not found")
-    if row.status != "pending":
-        raise HTTPException(400, f"Item already {row.status}")
 
-    # Map action → status. The action vocabulary ("promote"/"reject") differs
-    # from the status vocabulary ("promoted"/"rejected") that Tier 0 lookup
-    # and the stats endpoint filter on.
+    # Map action → status. Allows re-editing already promoted or rejected items.
     row.status = "promoted" if body.action == "promote" else "rejected"
     row.reviewed_at = datetime.now(timezone.utc)
     row.promoted_by = admin.id
 
-    # On promote, optionally accept corrected nutrition from the admin
     if body.action == "promote":
         if body.per_100g is not None:
             row.per_100g = body.per_100g.model_dump()

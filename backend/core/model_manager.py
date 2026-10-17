@@ -122,15 +122,22 @@ class ModelManager:
             else:
                 return self._predict_ultralytics(image, conf_threshold)
 
+    @staticmethod
+    def _norm_label(name: str) -> str:
+        return " ".join(name.lower().split())
+
     def _predict_ultralytics(self, image: Image.Image, conf_threshold: float) -> List[Dict[str, Any]]:
-        """Run Ultralytics YOLO inference."""
+        """Run Ultralytics YOLO inference with canonical-name NMS deduplication."""
         results = self.model.predict(
             source=image,
             conf=conf_threshold,
             verbose=False,
         )
 
-        detections = []
+        raw_boxes = []
+        raw_scores = []
+        raw_cids = []
+        raw_labels = []
         for result in results:
             if result.boxes is None:
                 continue
@@ -139,17 +146,37 @@ class ModelManager:
                 confidence = float(box.conf[0].item())
                 bbox = box.xyxy[0].tolist()
                 name = self.class_names.get(class_id, f"Unknown ({class_id})")
-                detections.append({
-                    "class_id": class_id,
-                    "name": name,
-                    "confidence": round(confidence, 4),
-                    "bbox": [round(c, 1) for c in bbox],
-                })
+                raw_boxes.append(bbox)
+                raw_scores.append(confidence)
+                raw_cids.append(class_id)
+                raw_labels.append(self._norm_label(name))
+
+        if not raw_boxes:
+            return []
+
+        iou_threshold = self.config["model"].get("iou_threshold", 0.45)
+        keep_idx = self._nms_per_class(
+            np.array(raw_boxes, dtype=np.float32),
+            np.array(raw_scores, dtype=np.float32),
+            np.array(raw_labels),
+            iou_threshold,
+        )
+
+        detections = []
+        for i in keep_idx:
+            cid = raw_cids[i]
+            name = self.class_names.get(cid, f"Unknown ({cid})")
+            detections.append({
+                "class_id": cid,
+                "name": name,
+                "confidence": round(raw_scores[i], 4),
+                "bbox": [round(c, 1) for c in raw_boxes[i]],
+            })
 
         return detections
 
     def _predict_onnx(self, image: Image.Image, conf_threshold: float, input_size: int) -> List[Dict[str, Any]]:
-        """Run ONNX Runtime inference with manual NMS."""
+        """Run ONNX Runtime inference with manual NMS grouped by canonical dish name."""
         # Preprocess: resize, normalize, transpose to NCHW
         img_np = np.array(image.convert("RGB"))
         orig_h, orig_w = img_np.shape[:2]
@@ -183,6 +210,9 @@ class ModelManager:
         max_score = max_score[keep_mask]
         class_ids = class_ids[keep_mask]
 
+        if boxes_cxcywh.shape[0] == 0:
+            return []
+
         # Convert center-format (cx, cy, w, h) → corner-format (x1, y1, x2, y2)
         # and scale from input_size back to original image pixels.
         scale_x = orig_w / input_size
@@ -195,15 +225,15 @@ class ModelManager:
             (cy + h / 2) * scale_y,
         ], axis=1)
 
-        # --- IoU-based NMS, run independently per class ---
-        # Per-class NMS is what real YOLO post-processing does: boxes of the
-        # same class that overlap heavily (IoU > iou_threshold) are treated as
-        # duplicate predictions of one object and suppressed; non-overlapping
-        # boxes of the same class (e.g. two separate bowls of the same curry)
-        # are both kept. This replaces the previous "keep best per class" rule,
-        # which collapsed multiple same-class objects into a single detection.
+        # Map integer class_ids to normalized canonical dish names so duplicate
+        # YOLO class IDs (e.g. class 1 and class 105) suppress each other in NMS.
+        norm_labels = np.array([
+            self._norm_label(self.class_names.get(int(cid), f"Unknown ({int(cid)})"))
+            for cid in class_ids
+        ])
+
         iou_threshold = self.config["model"].get("iou_threshold", 0.45)
-        keep_idx = self._nms_per_class(boxes_xyxy, max_score, class_ids, iou_threshold)
+        keep_idx = self._nms_per_class(boxes_xyxy, max_score, norm_labels, iou_threshold)
 
         detections = []
         for i in keep_idx:
@@ -214,7 +244,7 @@ class ModelManager:
                 "class_id": cid,
                 "name": name,
                 "confidence": round(float(max_score[i]), 4),
-                "bbox": [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)],
+                "bbox": [round(float(x1), 1), round(float(y1), 1), round(float(x2), 1), round(float(y2), 1)],
             })
 
         return detections
@@ -229,10 +259,10 @@ class ModelManager:
         """
         Greedy per-class Non-Maximum Suppression.
 
-        Suppresses overlapping same-class boxes, keeping the highest-confidence
-        one. Different classes are never compared, so a box for "curry" is not
-        suppressed by an overlapping box for "rice". Returns indices of the
-        kept boxes, sorted by descending confidence.
+        `class_ids` can be an array of integer IDs or normalized canonical
+        dish name strings. Suppresses overlapping same-class boxes, keeping
+        the highest-confidence one. Returns indices of kept boxes sorted by
+        descending confidence.
         """
         if boxes.shape[0] == 0:
             return []

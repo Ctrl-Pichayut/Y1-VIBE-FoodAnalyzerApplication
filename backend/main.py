@@ -95,7 +95,11 @@ async def lifespan(app: FastAPI):
 
     # P6 fix: Initialize NutritionService once at startup (reads and parses
     # nutrition_db.json). All endpoints access via request.app.state.nutrition_svc.
-    nutrition_svc = NutritionService(BASE_DIR / config["nutritional"]["db_file"])
+    nutr_cfg = config.get("nutritional", {})
+    nutrition_svc = NutritionService(
+        BASE_DIR / nutr_cfg["db_file"],
+        cache_size=int(nutr_cfg.get("offline_cache_size", 50)),
+    )
     app.state.nutrition_svc = nutrition_svc
 
     # Initialize Gemini recognizer (hybrid recognition layer).

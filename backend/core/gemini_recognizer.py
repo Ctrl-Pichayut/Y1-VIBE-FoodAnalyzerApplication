@@ -34,6 +34,10 @@ class GeminiDish(BaseModel):
         ge=0, description="Typical single-serving size in grams visible in the image"
     )
     is_thai_dish: bool = Field(description="True if this is a Thai/SE-Asian dish")
+    box_2d: Optional[List[int]] = Field(
+        default=None,
+        description="2D bounding box [ymin, xmin, ymax, xmax] normalized from 0 to 1000",
+    )
 
 
 class GeminiNutrition(BaseModel):
@@ -56,7 +60,8 @@ _RECOGNIZE_PROMPT = (
     "You are a food-recognition expert specializing in Thai and Southeast Asian cuisine. "
     "Identify EVERY distinct dish visible in this image. For each dish, give its canonical "
     "English name, the Thai script name (or null if not Thai), your confidence (0..1), an "
-    "estimated typical serving size in grams, and whether it is a Thai dish. "
+    "estimated typical serving size in grams, whether it is a Thai dish, and its 2D bounding "
+    "box `box_2d` as [ymin, xmin, ymax, xmax] normalized 0..1000. "
     "Return a JSON array of objects. If no food is visible, return an empty array []. "
     "Be specific with names (e.g. 'Pad Thai', 'Green Papaya Salad', 'Tom Yum Goong')."
 )
@@ -146,13 +151,11 @@ class GeminiRecognizer:
             contents=contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=GeminiDish,
+                response_schema=list[GeminiDish],
             ),
         )
 
-        # The SDK parses the constrained JSON for us; the parsed object(s)
-        # land on `response.parsed`. Schema=GeminiDish (single) but we asked
-        # for an array in the prompt — wrap/unwrap defensively.
+        # The SDK parses the constrained JSON array into `response.parsed`.
         return _parse_dish_array(response)
 
     async def _do_estimate(self, dish_name: str) -> Optional[GeminiNutrition]:

@@ -1,23 +1,29 @@
 /**
- * AdminScreen — Review Gemini-estimated dishes and promote good ones to the
- * verified nutrition database.
- *
- * Each row is a dish that Gemini estimated nutrition for (source="gemini",
- * captured automatically on scan). Tapping a card expands editable nutrition
- * fields pre-filled with Gemini's values; the admin corrects if needed and
- * taps Promote (→ future scans treat it as verified) or Reject.
- *
- * Modeled on HistoryScreen's pagination + AppModal patterns.
+ * AdminScreen — Review Gemini-estimated dishes, filter by status
+ * (Pending / Promoted / Rejected), re-edit promoted/rejected dishes,
+ * and inspect the active YOLO/ONNX model metadata.
  */
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  ActivityIndicator, RefreshControl,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, radii, fonts } from '../theme/tokens';
-import { getReviewQueue, getReviewStats, submitReview } from '../services/api';
+import {
+  getReviewQueue,
+  getReviewStats,
+  submitReview,
+  getModelInfo,
+} from '../services/api';
 import AppModal, { ModalState } from '../components/AppModal';
+import { ModelInfo } from '../types/models';
 
 interface ReviewItem {
   id: number;
@@ -28,11 +34,17 @@ interface ReviewItem {
   created_at: string;
 }
 
+type StatusFilter = 'pending' | 'promoted' | 'rejected';
+
 export default function AdminScreen() {
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
   const [items, setItems] = useState<ReviewItem[]>([]);
-  const [stats, setStats] = useState<{ pending: number; promoted: number; rejected: number }>(
-    { pending: 0, promoted: 0, rejected: 0 }
-  );
+  const [stats, setStats] = useState<{ pending: number; promoted: number; rejected: number }>({
+    pending: 0,
+    promoted: 0,
+    rejected: 0,
+  });
+  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
@@ -46,18 +58,20 @@ export default function AdminScreen() {
     setTimeout(() => setToast(null), 2500);
   };
 
-  const fetchData = async (p = 1, refresh = false) => {
+  const fetchData = async (p = 1, refresh = false, activeStatus: StatusFilter = statusFilter) => {
     try {
-      const [queueRes, statsRes] = await Promise.all([
-        getReviewQueue(p),
+      const [queueRes, statsRes, modelRes] = await Promise.all([
+        getReviewQueue(p, 20, activeStatus),
         getReviewStats().catch(() => null),
+        p === 1 ? getModelInfo().catch(() => null) : Promise.resolve(null),
       ]);
       if (refresh || p === 1) {
-        setItems(queueRes.items);
+        setItems(queueRes.items || []);
       } else {
-        setItems(prev => [...prev, ...queueRes.items]);
+        setItems((prev) => [...prev, ...(queueRes.items || [])]);
       }
       if (statsRes) setStats(statsRes);
+      if (modelRes) setModelInfo(modelRes);
       setHasMore(p < queueRes.total_pages);
       setPage(p);
     } catch (e: any) {
@@ -68,36 +82,69 @@ export default function AdminScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => {
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      setExpandedId(null);
+      fetchData(1, true, statusFilter);
+    }, [statusFilter])
+  );
+
+  const handleSelectStatus = (nextStatus: StatusFilter) => {
+    if (nextStatus === statusFilter) return;
+    setStatusFilter(nextStatus);
     setLoading(true);
     setExpandedId(null);
-    fetchData(1, true);
-  }, []));
+    fetchData(1, true, nextStatus);
+  };
 
-  const onRefresh = () => { setRefreshing(true); fetchData(1, true); };
-  const onLoadMore = () => { if (hasMore) fetchData(page + 1); };
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchData(1, true, statusFilter);
+  };
+
+  const onLoadMore = () => {
+    if (hasMore && !loading && !refreshing) {
+      fetchData(page + 1, false, statusFilter);
+    }
+  };
 
   const handlePromote = (item: ReviewItem, edited: any, editedAllergens: string) => {
+    const isAlreadyPromoted = item.status === 'promoted';
     setModal({
-      title: 'Promote dish',
-      message: `Add "${item.dish_name}" to the verified nutrition database? Future scans will use this data instead of asking Gemini.`,
+      title: isAlreadyPromoted ? 'Update promoted dish' : 'Promote dish',
+      message: isAlreadyPromoted
+        ? `Save updated nutrition values for "${item.dish_name}" in the verified catalog?`
+        : `Add "${item.dish_name}" to the verified nutrition database? Future scans will use this data instead of asking Gemini.`,
       confirm: true,
-      okLabel: 'Promote',
+      okLabel: isAlreadyPromoted ? 'Save Changes' : 'Promote',
       onConfirm: async () => {
         try {
           const allergens = editedAllergens
-            ? editedAllergens.split(',').map(s => s.trim()).filter(Boolean)
+            ? editedAllergens
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
             : [];
-          await submitReview(item.id, {
+          const updated = await submitReview(item.id, {
             action: 'promote',
             per_100g: edited,
             allergens,
           });
-          // Remove from the pending list + update stats
-          setItems(prev => prev.filter(i => i.id !== item.id));
-          setStats(s => ({ ...s, pending: s.pending - 1, promoted: s.promoted + 1 }));
+          if (statusFilter === 'promoted') {
+            setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+          } else {
+            setItems((prev) => prev.filter((i) => i.id !== item.id));
+          }
+          getReviewStats()
+            .then((s) => s && setStats(s))
+            .catch(() => {});
           setExpandedId(null);
-          showToast(`Promoted "${item.dish_name}"`);
+          showToast(
+            isAlreadyPromoted
+              ? `Updated "${item.dish_name}"`
+              : `Promoted "${item.dish_name}"`
+          );
         } catch (e: any) {
           setModal({ title: 'Error', message: e.message });
         }
@@ -108,15 +155,21 @@ export default function AdminScreen() {
   const handleReject = (item: ReviewItem) => {
     setModal({
       title: 'Reject dish',
-      message: `Discard Gemini's estimate for "${item.dish_name}"? It won't be promoted, but future scans may re-capture it.`,
+      message: `Mark "${item.dish_name}" as rejected? It will be removed from the verified catalog.`,
       confirm: true,
       destructive: true,
       okLabel: 'Reject',
       onConfirm: async () => {
         try {
-          await submitReview(item.id, { action: 'reject' });
-          setItems(prev => prev.filter(i => i.id !== item.id));
-          setStats(s => ({ ...s, pending: s.pending - 1, rejected: s.rejected + 1 }));
+          const updated = await submitReview(item.id, { action: 'reject' });
+          if (statusFilter === 'rejected') {
+            setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+          } else {
+            setItems((prev) => prev.filter((i) => i.id !== item.id));
+          }
+          getReviewStats()
+            .then((s) => s && setStats(s))
+            .catch(() => {});
           setExpandedId(null);
           showToast(`Rejected "${item.dish_name}"`);
         } catch (e: any) {
@@ -129,7 +182,9 @@ export default function AdminScreen() {
   if (loading) {
     return (
       <>
-        <View style={styles.center}><ActivityIndicator size="large" /></View>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.textPrimary} />
+        </View>
         <AppModal state={modal} onClose={() => setModal(null)} />
       </>
     );
@@ -147,11 +202,59 @@ export default function AdminScreen() {
           contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.xxl }}
           ListHeaderComponent={() => (
             <View>
-              <Text style={styles.title}>Review queue</Text>
+              <Text style={styles.title}>Admin Console</Text>
+
+              {/* Model Info Card */}
+              {modelInfo && (
+                <View style={styles.modelCard}>
+                  <View style={styles.modelHeaderRow}>
+                    <Text style={styles.modelSectionLabel}>Active Vision Model</Text>
+                    <View style={styles.modelVersionBadge}>
+                      <Text style={styles.modelVersionText}>v{modelInfo.version}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.modelMetaGrid}>
+                    <View style={styles.modelMetaItem}>
+                      <Text style={styles.modelMetaValue}>{modelInfo.class_count}</Text>
+                      <Text style={styles.modelMetaLabel}>Classes</Text>
+                    </View>
+                    <View style={styles.modelMetaItem}>
+                      <Text style={styles.modelMetaValue}>
+                        {Math.round((modelInfo.confidence_threshold || 0.25) * 100)}%
+                      </Text>
+                      <Text style={styles.modelMetaLabel}>Min Conf</Text>
+                    </View>
+                    <View style={styles.modelMetaItem}>
+                      <Text style={styles.modelMetaValue}>
+                        {(modelInfo.device || 'cpu').toUpperCase()}
+                      </Text>
+                      <Text style={styles.modelMetaLabel}>Runtime</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Interactive Filter Tabs */}
+              <Text style={styles.sectionSubtitle}>Nutrition Review Queue</Text>
               <View style={styles.statsRow}>
-                <StatPill label="Pending" value={stats.pending} active />
-                <StatPill label="Promoted" value={stats.promoted} />
-                <StatPill label="Rejected" value={stats.rejected} />
+                <StatPill
+                  label="Pending"
+                  value={stats.pending}
+                  active={statusFilter === 'pending'}
+                  onPress={() => handleSelectStatus('pending')}
+                />
+                <StatPill
+                  label="Promoted"
+                  value={stats.promoted}
+                  active={statusFilter === 'promoted'}
+                  onPress={() => handleSelectStatus('promoted')}
+                />
+                <StatPill
+                  label="Rejected"
+                  value={stats.rejected}
+                  active={statusFilter === 'rejected'}
+                  onPress={() => handleSelectStatus('rejected')}
+                />
               </View>
             </View>
           )}
@@ -166,10 +269,11 @@ export default function AdminScreen() {
           )}
           ListEmptyComponent={() => (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No dishes to review</Text>
+              <Text style={styles.emptyTitle}>No {statusFilter} dishes</Text>
               <Text style={styles.emptyBody}>
-                Scan food to populate the queue. Dishes that Gemini estimates
-                nutrition for will appear here automatically.
+                {statusFilter === 'pending'
+                  ? 'Scan food to populate the queue. Dishes that Gemini estimates nutrition for will appear here automatically.'
+                  : `No dishes have been marked as ${statusFilter} yet.`}
               </Text>
             </View>
           )}
@@ -185,23 +289,44 @@ export default function AdminScreen() {
   );
 }
 
-function StatPill({ label, value, active }: { label: string; value: number; active?: boolean }) {
+function StatPill({
+  label,
+  value,
+  active,
+  onPress,
+}: {
+  label: string;
+  value: number;
+  active?: boolean;
+  onPress: () => void;
+}) {
   return (
-    <View style={[styles.statPill, active && styles.statPillActive]}>
+    <TouchableOpacity
+      style={[styles.statPill, active && styles.statPillActive]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: !!active }}
+    >
       <Text style={[styles.statValue, active && styles.statValueActive]}>{value}</Text>
       <Text style={[styles.statLabel, active && styles.statLabelActive]}>{label}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-function ReviewCard({ item, expanded, onToggle, onPromote, onReject }: {
+function ReviewCard({
+  item,
+  expanded,
+  onToggle,
+  onPromote,
+  onReject,
+}: {
   item: ReviewItem;
   expanded: boolean;
   onToggle: () => void;
   onPromote: (item: ReviewItem, edited: any, allergens: string) => void;
   onReject: (item: ReviewItem) => void;
 }) {
-  // Local editable copy of the nutrition values
   const [edited, setEdited] = useState<any>({ ...item.per_100g });
   const [allergens, setAllergens] = useState<string>((item.allergens || []).join(', '));
 
@@ -212,14 +337,19 @@ function ReviewCard({ item, expanded, onToggle, onPromote, onReject }: {
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.dishName}>{item.dish_name}</Text>
-            <Text style={styles.tag}>Gemini estimate · tap to review</Text>
+            <Text style={styles.tag}>
+              {item.status === 'promoted'
+                ? '✓ Verified in catalog · tap to edit'
+                : item.status === 'rejected'
+                ? 'Rejected · tap to review or restore'
+                : 'Gemini estimate · tap to review'}
+            </Text>
           </View>
           <Text style={styles.chevron}>{expanded ? '−' : '+'}</Text>
         </View>
       </TouchableOpacity>
 
       {!expanded && (
-        // Collapsed: compact macro summary
         <View style={styles.macroRow}>
           <MiniMacro label="Cal" value={p.calories} />
           <MiniMacro label="Protein" value={p.protein} />
@@ -232,22 +362,46 @@ function ReviewCard({ item, expanded, onToggle, onPromote, onReject }: {
         <View style={styles.editSection}>
           <Text style={styles.fieldLabel}>Nutrition (per 100g) — edit if needed</Text>
           <View style={styles.fieldGrid}>
-            <NumberField label="Calories" value={edited.calories}
-              onChange={(v) => setEdited({ ...edited, calories: v })} />
-            <NumberField label="Protein (g)" value={edited.protein}
-              onChange={(v) => setEdited({ ...edited, protein: v })} />
-            <NumberField label="Fat (g)" value={edited.fat}
-              onChange={(v) => setEdited({ ...edited, fat: v })} />
-            <NumberField label="Carbs (g)" value={edited.carbs}
-              onChange={(v) => setEdited({ ...edited, carbs: v })} />
-            <NumberField label="Fiber (g)" value={edited.fiber}
-              onChange={(v) => setEdited({ ...edited, fiber: v })} />
-            <NumberField label="Sugar (g)" value={edited.sugar}
-              onChange={(v) => setEdited({ ...edited, sugar: v })} />
-            <NumberField label="Sodium (mg)" value={edited.sodium_mg}
-              onChange={(v) => setEdited({ ...edited, sodium_mg: v })} />
-            <NumberField label="Sat fat (g)" value={edited.saturated_fat_g}
-              onChange={(v) => setEdited({ ...edited, saturated_fat_g: v })} />
+            <NumberField
+              label="Calories"
+              value={edited.calories}
+              onChange={(v) => setEdited({ ...edited, calories: v })}
+            />
+            <NumberField
+              label="Protein (g)"
+              value={edited.protein}
+              onChange={(v) => setEdited({ ...edited, protein: v })}
+            />
+            <NumberField
+              label="Fat (g)"
+              value={edited.fat}
+              onChange={(v) => setEdited({ ...edited, fat: v })}
+            />
+            <NumberField
+              label="Carbs (g)"
+              value={edited.carbs}
+              onChange={(v) => setEdited({ ...edited, carbs: v })}
+            />
+            <NumberField
+              label="Fiber (g)"
+              value={edited.fiber}
+              onChange={(v) => setEdited({ ...edited, fiber: v })}
+            />
+            <NumberField
+              label="Sugar (g)"
+              value={edited.sugar}
+              onChange={(v) => setEdited({ ...edited, sugar: v })}
+            />
+            <NumberField
+              label="Sodium (mg)"
+              value={edited.sodium_mg}
+              onChange={(v) => setEdited({ ...edited, sodium_mg: v })}
+            />
+            <NumberField
+              label="Sat fat (g)"
+              value={edited.saturated_fat_g}
+              onChange={(v) => setEdited({ ...edited, saturated_fat_g: v })}
+            />
           </View>
 
           <Text style={styles.fieldLabel}>Allergens (comma-separated)</Text>
@@ -260,17 +414,21 @@ function ReviewCard({ item, expanded, onToggle, onPromote, onReject }: {
           />
 
           <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnSecondary]}
-              onPress={() => onReject(item)}
-            >
-              <Text style={styles.btnSecondaryText}>Reject</Text>
-            </TouchableOpacity>
+            {item.status !== 'rejected' && (
+              <TouchableOpacity
+                style={[styles.btn, styles.btnSecondary]}
+                onPress={() => onReject(item)}
+              >
+                <Text style={styles.btnSecondaryText}>Reject</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={[styles.btn, styles.btnPrimary]}
               onPress={() => onPromote(item, edited, allergens)}
             >
-              <Text style={styles.btnPrimaryText}>Promote</Text>
+              <Text style={styles.btnPrimaryText}>
+                {item.status === 'promoted' ? 'Save Changes' : 'Promote'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -288,7 +446,15 @@ function MiniMacro({ label, value }: { label: string; value: number }) {
   );
 }
 
-function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function NumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
   return (
     <View style={styles.numberField}>
       <Text style={styles.numberLabel}>{label}</Text>
@@ -305,27 +471,111 @@ function NumberField({ label, value, onChange }: { label: string; value: number;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
 
-  title: { fontSize: 32, fontFamily: fonts.display, color: colors.textPrimary, marginBottom: spacing.md },
+  title: {
+    fontSize: 32,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
+
+  // Model Status Card
+  modelCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  modelHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  modelSectionLabel: {
+    fontSize: 12,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  modelVersionBadge: {
+    backgroundColor: colors.textPrimary,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  modelVersionText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontFamily: fonts.bodySemiBold,
+  },
+  modelMetaGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: spacing.xs,
+  },
+  modelMetaItem: {
+    alignItems: 'center',
+  },
+  modelMetaValue: {
+    fontSize: 20,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+  },
+  modelMetaLabel: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
 
   // Stats row
   statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   statPill: {
-    flex: 1, backgroundColor: colors.surface, borderRadius: radii.card,
-    borderWidth: 1, borderColor: colors.border, padding: spacing.md, alignItems: 'center',
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    alignItems: 'center',
   },
   statPillActive: { borderColor: colors.textPrimary, borderWidth: 2 },
   statValue: { fontSize: 24, fontFamily: fonts.display, color: colors.textPrimary },
   statValueActive: { color: colors.textPrimary },
-  statLabel: { fontSize: 12, fontFamily: fonts.bodyMedium, color: colors.textSecondary, marginTop: 2 },
+  statLabel: {
+    fontSize: 12,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   statLabelActive: { color: colors.textPrimary, fontFamily: fonts.bodySemiBold },
 
   // Card
   card: {
-    backgroundColor: colors.surface, borderRadius: radii.card,
-    borderWidth: 1, borderColor: colors.border,
-    padding: spacing.md, marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dishName: { fontSize: 18, fontFamily: fonts.display, color: colors.textPrimary },
@@ -340,19 +590,35 @@ const styles = StyleSheet.create({
 
   // Expanded editor
   editSection: { marginTop: spacing.md },
-  fieldLabel: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.textSecondary, marginBottom: spacing.xs, marginTop: spacing.sm },
+  fieldLabel: {
+    fontSize: 13,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
+  },
   fieldGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   numberField: { width: '47%' },
   numberLabel: { fontSize: 12, fontFamily: fonts.body, color: colors.textSecondary, marginBottom: 2 },
   numberInput: {
-    backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radii.input, padding: spacing.sm, fontSize: 15,
-    fontFamily: fonts.body, color: colors.textPrimary,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.input,
+    padding: spacing.sm,
+    fontSize: 15,
+    fontFamily: fonts.body,
+    color: colors.textPrimary,
   },
   input: {
-    backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radii.input, padding: spacing.sm, fontSize: 15,
-    fontFamily: fonts.body, color: colors.textPrimary,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.input,
+    padding: spacing.sm,
+    fontSize: 15,
+    fontFamily: fonts.body,
+    color: colors.textPrimary,
   },
 
   // Actions
@@ -366,13 +632,25 @@ const styles = StyleSheet.create({
   // Empty
   empty: { alignItems: 'center', paddingVertical: spacing.xxl, paddingHorizontal: spacing.lg },
   emptyTitle: { fontSize: 20, fontFamily: fonts.display, color: colors.textPrimary },
-  emptyBody: { fontSize: 15, fontFamily: fonts.body, color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center', lineHeight: 21 },
+  emptyBody: {
+    fontSize: 15,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
 
   // Toast
   toast: {
-    position: 'absolute', bottom: spacing.lg, left: spacing.md, right: spacing.md,
-    backgroundColor: colors.textPrimary, borderRadius: radii.button,
-    paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md,
+    position: 'absolute',
+    bottom: spacing.lg,
+    left: spacing.md,
+    right: spacing.md,
+    backgroundColor: colors.textPrimary,
+    borderRadius: radii.button,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
   },
   toastText: { color: '#fff', fontSize: 14, fontFamily: fonts.bodySemiBold, textAlign: 'center' },
 });

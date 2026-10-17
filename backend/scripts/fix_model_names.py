@@ -8,21 +8,47 @@ that were alphabetically sorted during training. This script:
 3. Saves a patched best.pt (backs up the original first)
 4. Re-exports best.onnx with the corrected names
 """
+import argparse
 import os
 import json
 import shutil
+from pathlib import Path
 from ultralytics import YOLO
 
-BASE_DIR = r"c:\Users\iceje\Downloads\Food list-20260603T033235Z-3-001\Food list"
-MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
-ONNX_PATH = os.path.join(BASE_DIR, "best.onnx")
-CLASS_MAP_PATH = os.path.join(BASE_DIR, "class_name_template.json")
+SCRIPT_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = SCRIPT_DIR.parent
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Patch YOLO .pt class names and re-export ONNX.")
+    parser.add_argument(
+        "--model",
+        default=str(BACKEND_DIR / "models" / "best.pt"),
+        help="Path to the .pt model file",
+    )
+    parser.add_argument(
+        "--onnx",
+        default=str(BACKEND_DIR / "models" / "best.onnx"),
+        help="Output path for the exported .onnx model",
+    )
+    parser.add_argument(
+        "--class-map",
+        default=str(SCRIPT_DIR / "class_name_template.json"),
+        help="Path to class_name_template.json or food_classes.json",
+    )
+    return parser.parse_args()
+
 
 def main():
+    args = parse_args()
+    MODEL_PATH = args.model
+    ONNX_PATH = args.onnx
+    CLASS_MAP_PATH = args.class_map
+
     # Load the class name map
     with open(CLASS_MAP_PATH, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    class_map = data["class_name_map"]
+    class_map = data.get("class_name_map", data)
 
     # Load the model
     print("Loading model...", flush=True)

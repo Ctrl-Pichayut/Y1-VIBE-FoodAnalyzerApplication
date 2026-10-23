@@ -18,15 +18,26 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   Image,
   LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { colors, spacing, radii, getHealthColor, fonts } from '../theme/tokens';
+import {
+  colors,
+  spacing,
+  radii,
+  getHealthColor,
+  getHealthSoftColor,
+  fonts,
+  shadows,
+  macroColors,
+} from '../theme/tokens';
 import * as api from '../services/api';
 import DishCorrectionModal from '../components/DishCorrectionModal';
+import { FadeInView, IconBubble, PressableScale, Toast, mealTypeIcon } from '../components/ui';
 import { MealType } from '../types/models';
 
 const MEAL_TYPE_OPTIONS: { id: MealType; label: string }[] = [
@@ -340,7 +351,7 @@ export default function ResultScreen({ route, navigation }: any) {
             <Text style={styles.subtitle}>{subtitle}</Text>
           </View>
           {isDetailView && loggedIn && (
-            <TouchableOpacity
+            <PressableScale
               style={[
                 styles.editMealToggleBtn,
                 isEditingSavedMeal && styles.editMealToggleBtnActive,
@@ -355,31 +366,43 @@ export default function ResultScreen({ route, navigation }: any) {
                   setIsEditingSavedMeal(true);
                 }
               }}
-              activeOpacity={0.7}
             >
+              <Ionicons
+                name={isEditingSavedMeal ? 'close' : 'create-outline'}
+                size={16}
+                color={isEditingSavedMeal ? colors.textSecondary : colors.accent}
+              />
               <Text
                 style={[
                   styles.editMealToggleText,
                   isEditingSavedMeal && styles.editMealToggleTextActive,
                 ]}
               >
-                {isEditingSavedMeal ? 'Cancel' : 'Edit Meal'}
+                {isEditingSavedMeal ? 'Cancel' : 'Edit'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           )}
         </View>
 
         {/* Allergen Conflict Alert Banner */}
         {allergenConflicts.length > 0 && (
-          <View style={styles.allergenAlertBanner}>
-            <Text style={styles.allergenAlertTitle}>⚠ Allergen Alert</Text>
-            <Text style={styles.allergenAlertBody}>
-              Matches your saved food allergies:{' '}
-              {allergenConflicts
-                .map((c) => `${c.dishName} (${c.allergens.join(', ')})`)
-                .join(' · ')}
-            </Text>
-          </View>
+          <FadeInView style={styles.allergenAlertBanner}>
+            <IconBubble
+              name="warning"
+              size={36}
+              color={colors.error}
+              background="rgba(198, 40, 40, 0.12)"
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.allergenAlertTitle}>Allergen alert</Text>
+              <Text style={styles.allergenAlertBody}>
+                Matches your saved food allergies:{' '}
+                {allergenConflicts
+                  .map((c) => `${c.dishName} (${c.allergens.join(', ')})`)
+                  .join(' · ')}
+              </Text>
+            </View>
+          </FadeInView>
         )}
 
         {/* Meal Type Selector Chips */}
@@ -387,17 +410,28 @@ export default function ResultScreen({ route, navigation }: any) {
           {MEAL_TYPE_OPTIONS.map((opt) => {
             const isSelected = mealType === opt.id;
             return (
-              <TouchableOpacity
+              <PressableScale
                 key={opt.id}
                 style={[styles.mealTypeChip, isSelected && styles.mealTypeChipActive]}
                 disabled={!canEdit}
-                onPress={() => setMealType(opt.id)}
-                activeOpacity={0.7}
+                dimWhenDisabled={false}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setMealType(opt.id);
+                }}
+                scaleTo={0.94}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: isSelected }}
               >
+                <Ionicons
+                  name={mealTypeIcon(opt.id)}
+                  size={18}
+                  color={isSelected ? colors.textOnDark : colors.textSecondary}
+                />
                 <Text style={[styles.mealTypeChipText, isSelected && styles.mealTypeChipTextActive]}>
                   {opt.label}
                 </Text>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
         </View>
@@ -437,27 +471,37 @@ export default function ResultScreen({ route, navigation }: any) {
                 const height = Math.max(24, Math.min(renderedImgSize.height - top, rawHeight));
 
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={i}
-                    activeOpacity={0.8}
                     onPress={() => scrollToCard(i)}
-                    style={[styles.bboxBox, { left, top, width, height }]}
+                    style={({ pressed }) => [
+                      styles.bboxBox,
+                      { left, top, width, height },
+                      pressed && styles.bboxBoxPressed,
+                    ]}
                   >
                     <View style={styles.bboxLabelWrap}>
                       <Text style={styles.bboxLabelText} numberOfLines={1}>
                         {food.name}
                       </Text>
                     </View>
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               })}
+            {foodsList.some((f: any) => f.bbox?.length >= 4) && (
+              <View style={styles.heroHint} pointerEvents="none">
+                <Ionicons name="hand-left-outline" size={12} color={colors.textOnDark} />
+                <Text style={styles.heroHintText}>Tap a box to jump to the dish</Text>
+              </View>
+            )}
           </View>
         )}
 
         {/* Food Cards */}
         {foodsList.map((food: any, index: number) => (
-          <View
+          <FadeInView
             key={index}
+            delay={Math.min(index, 5) * 70}
             onLayout={(e: LayoutChangeEvent) => {
               cardOffsets.current[index] = e.nativeEvent.layout.y;
             }}
@@ -472,25 +516,23 @@ export default function ResultScreen({ route, navigation }: any) {
               onUpdatePortion={(grams) => handleUpdatePortion(index, grams)}
               onOpenCorrection={() => setCorrectingIndex(index)}
             />
-          </View>
+          </FadeInView>
         ))}
 
         {/* Add Dish Button */}
         {canEdit && (
-          <TouchableOpacity
-            style={styles.addDishBtn}
-            onPress={() => setAddingDish(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.addDishBtnText}>+ Add Another Dish</Text>
-          </TouchableOpacity>
+          <PressableScale style={styles.addDishBtn} onPress={() => setAddingDish(true)}>
+            <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
+            <Text style={styles.addDishBtnText}>Add another dish</Text>
+          </PressableScale>
         )}
 
         {foodsList.length === 0 && (
           <View style={styles.empty}>
+            <IconBubble name="restaurant-outline" size={64} color={colors.textSecondary} background={colors.surfaceMuted} />
             <Text style={styles.emptyTitle}>No food in this meal</Text>
             <Text style={styles.emptyBody}>
-              Tap "+ Add Another Dish" above or scan a photo with better lighting.
+              Tap "Add another dish" above or scan a photo with better lighting.
             </Text>
           </View>
         )}
@@ -502,58 +544,61 @@ export default function ResultScreen({ route, navigation }: any) {
       {/* Sticky Bottom Bar for Scan Mode */}
       {!isDetailView && foodsList.length > 0 && (
         <View style={[styles.stickyBottomBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          <TouchableOpacity
+          <PressableScale
             style={styles.bottomSecondaryBtn}
             onPress={() => navigation.navigate('ScanCamera')}
-            activeOpacity={0.7}
+            accessibilityLabel="Scan another meal"
           >
-            <Text style={styles.bottomSecondaryBtnText}>Scan Another</Text>
-          </TouchableOpacity>
+            <Ionicons name="camera-outline" size={18} color={colors.textPrimary} />
+            <Text style={styles.bottomSecondaryBtnText}>Rescan</Text>
+          </PressableScale>
 
-          <TouchableOpacity
+          <PressableScale
             style={[styles.bottomPrimaryBtn, saved && styles.bottomPrimaryBtnSaved]}
             onPress={handleSaveMeal}
             disabled={saving || saved}
-            activeOpacity={0.8}
+            dimWhenDisabled={!saved}
           >
+            <Ionicons
+              name={saved ? 'checkmark-circle' : loggedIn ? 'bookmark-outline' : 'log-in-outline'}
+              size={18}
+              color={colors.textOnDark}
+            />
             <Text style={styles.bottomPrimaryBtnText}>
               {saving
                 ? 'Saving...'
                 : saved
-                ? '✓ Saved to History'
+                ? 'Saved to History'
                 : `Save Meal · ${computedTotals.calories} kcal`}
             </Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       )}
 
       {/* Sticky Bottom Bar for Editing Saved Meal from History */}
       {isDetailView && isEditingSavedMeal && foodsList.length > 0 && (
         <View style={[styles.stickyBottomBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          <TouchableOpacity
+          <PressableScale
             style={[styles.bottomPrimaryBtn, { flex: 1 }]}
             onPress={handleUpdateSavedMeal}
             disabled={saving}
-            activeOpacity={0.8}
           >
+            <Ionicons name="save-outline" size={18} color={colors.textOnDark} />
             <Text style={styles.bottomPrimaryBtnText}>
               {saving ? 'Updating...' : `Save Changes · ${computedTotals.calories} kcal`}
             </Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       )}
 
       {/* Floating Undo Toast */}
-      {toastMessage && (
-        <View style={[styles.toastFloating, { bottom: canEdit ? 96 : spacing.xl }]}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-          {undoSeconds > 0 && (
-            <TouchableOpacity style={styles.toastUndoBtn} onPress={handleUndoSave}>
-              <Text style={styles.toastUndoText}>Undo ({undoSeconds}s)</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      <Toast
+        message={toastMessage}
+        icon={/fail/i.test(toastMessage || '') ? 'alert-circle' : 'checkmark-circle'}
+        bottom={canEdit ? 104 : spacing.xl}
+        actionLabel={undoSeconds > 0 ? `Undo (${undoSeconds}s)` : undefined}
+        onAction={undoSeconds > 0 ? handleUndoSave : undefined}
+      />
 
       {/* Wrong Dish Replacement Modal */}
       {correctingIndex !== null && (
@@ -632,14 +677,19 @@ function FoodCard({
       {/* Header: Name + Trust Badge + Health Score */}
       <View style={styles.cardHeader}>
         <View style={{ flex: 1, marginRight: spacing.sm }}>
+          <Text style={styles.foodName}>{food.name}</Text>
           <View style={styles.nameRow}>
-            <Text style={styles.foodName}>{food.name}</Text>
             <View
               style={[
                 styles.trustBadge,
                 isAiEstimate ? styles.trustBadgeAi : styles.trustBadgeVerified,
               ]}
             >
+              <Ionicons
+                name={isAiEstimate ? 'sparkles' : 'shield-checkmark'}
+                size={11}
+                color={isAiEstimate ? colors.textSecondary : colors.accent}
+              />
               <Text
                 style={[
                   styles.trustBadgeText,
@@ -649,39 +699,42 @@ function FoodCard({
                 {isAiEstimate
                   ? 'AI estimate'
                   : isOpenFoodFacts
-                  ? '✓ OpenFoodFacts'
-                  : '✓ Verified'}
+                  ? 'OpenFoodFacts'
+                  : 'Verified'}
               </Text>
             </View>
-          </View>
-
-          {/* Confidence row with Wrong dish prompt */}
-          <View style={styles.confidenceRow}>
             <Text
               style={[
                 styles.confidenceText,
                 isLowConfidence && { color: colors.moderate, fontFamily: fonts.bodySemiBold },
               ]}
             >
-              {Math.round(confidenceVal * 100)}% confidence
+              {Math.round(confidenceVal * 100)}% match
             </Text>
-            {canEdit && (
-              <TouchableOpacity
-                onPress={onOpenCorrection}
-                style={styles.wrongDishBtn}
-                accessibilityRole="button"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[styles.wrongDishText, isLowConfidence && { color: colors.moderate }]}>
-                  {isLowConfidence ? 'Not sure? Tap to change' : 'Wrong dish?'}
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
+
+          {/* Wrong dish prompt */}
+          {canEdit && (
+            <Pressable
+              onPress={onOpenCorrection}
+              style={({ pressed }) => [styles.wrongDishBtn, pressed && { opacity: 0.6 }]}
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name="swap-horizontal"
+                size={14}
+                color={isLowConfidence ? colors.moderate : colors.accent}
+              />
+              <Text style={[styles.wrongDishText, isLowConfidence && { color: colors.moderate }]}>
+                {isLowConfidence ? 'Not sure? Tap to change' : 'Wrong dish?'}
+              </Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Health Score Block */}
-        <View style={styles.scoreBlock}>
+        <View style={[styles.scoreBlock, { backgroundColor: getHealthSoftColor(food.health_label) }]}>
           <Text style={[styles.scoreNumber, { color: healthColor }]} maxFontSizeMultiplier={1.3}>
             {food.health_score}
           </Text>
@@ -695,27 +748,27 @@ function FoodCard({
           <View style={styles.portionHeader}>
             <Text style={styles.portionLabel}>Portion size</Text>
             <View style={styles.stepperContainer}>
-              <TouchableOpacity
+              <PressableScale
                 style={styles.stepBtn}
                 onPress={() => onUpdatePortion(Math.max(25, servingG - 25))}
-                activeOpacity={0.7}
+                scaleTo={0.85}
                 accessibilityRole="button"
                 accessibilityLabel="Decrease portion by 25 grams"
               >
-                <Text style={styles.stepBtnText}>−</Text>
-              </TouchableOpacity>
+                <Ionicons name="remove" size={18} color={colors.textPrimary} />
+              </PressableScale>
               <View style={styles.stepValueBox}>
                 <Text style={styles.stepValueText}>{servingG}g</Text>
               </View>
-              <TouchableOpacity
+              <PressableScale
                 style={styles.stepBtn}
                 onPress={() => onUpdatePortion(servingG + 25)}
-                activeOpacity={0.7}
+                scaleTo={0.85}
                 accessibilityRole="button"
                 accessibilityLabel="Increase portion by 25 grams"
               >
-                <Text style={styles.stepBtnText}>+</Text>
-              </TouchableOpacity>
+                <Ionicons name="add" size={18} color={colors.textPrimary} />
+              </PressableScale>
             </View>
           </View>
 
@@ -728,19 +781,22 @@ function FoodCard({
             ].map((chip) => {
               const isSelected = servingG === chip.grams;
               return (
-                <TouchableOpacity
+                <PressableScale
                   key={chip.label}
                   style={[styles.portionChip, isSelected && styles.portionChipActive]}
                   onPress={() => onUpdatePortion(chip.grams)}
-                  activeOpacity={0.7}
+                  scaleTo={0.94}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: isSelected }}
                   accessibilityLabel={`${chip.label} portion, ${chip.grams} grams`}
                 >
                   <Text style={[styles.portionChipText, isSelected && styles.portionChipTextActive]}>
-                    {chip.label} {chip.grams}g
+                    {chip.label}
                   </Text>
-                </TouchableOpacity>
+                  <Text style={[styles.portionChipSub, isSelected && styles.portionChipSubActive]}>
+                    {chip.grams}g
+                  </Text>
+                </PressableScale>
               );
             })}
           </View>
@@ -749,28 +805,40 @@ function FoodCard({
 
       {/* Nutrition Header + Per-serving / Per-100g Toggle */}
       <View style={styles.macroHeaderRow}>
-        <Text style={styles.macroHeaderCaption}>
-          {showPer100g ? 'Values per 100g' : `Values per ${servingG}g serving`}
-        </Text>
-        <TouchableOpacity
-          style={styles.toggleUnitBtn}
-          onPress={onTogglePer100g}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.toggleUnitText}>
-            {showPer100g ? 'Switch to serving' : 'Switch to 100g'}
-          </Text>
-        </TouchableOpacity>
+        <Text style={styles.macroHeaderCaption}>Nutrition</Text>
+        <View style={styles.unitToggle}>
+          {[
+            { id: false, label: `${servingG}g` },
+            { id: true, label: '100g' },
+          ].map((opt) => {
+            const active = showPer100g === opt.id;
+            return (
+              <Pressable
+                key={String(opt.id)}
+                onPress={() => {
+                  if (!active) onTogglePer100g();
+                }}
+                style={[styles.unitToggleOpt, active && styles.unitToggleOptActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={opt.id ? 'Show values per 100 grams' : 'Show values per serving'}
+                hitSlop={4}
+              >
+                <Text style={[styles.unitToggleText, active && styles.unitToggleTextActive]}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       {/* Macro Grid */}
       <View style={styles.macroGrid}>
-        <MacroItem label="Cal" value={cal} unit="kcal" />
-        <MacroItem label="Protein" value={protein} unit="g" />
-        <MacroItem label="Fat" value={fat} unit="g" />
-        <MacroItem label="Carbs" value={carbs} unit="g" />
+        <MacroItem label="Calories" value={cal} unit="kcal" highlight />
+        <MacroItem label="Protein" value={protein} unit="g" dot={macroColors.protein} />
+        <MacroItem label="Carbs" value={carbs} unit="g" dot={macroColors.carbs} />
+        <MacroItem label="Fat" value={fat} unit="g" dot={macroColors.fat} />
         <MacroItem label="Fiber" value={fiber} unit="g" />
         <MacroItem label="Sugar" value={sugar} unit="g" />
       </View>
@@ -789,10 +857,17 @@ function FoodCard({
       {/* Allergens */}
       {dishAllergens.length > 0 && (
         <View style={[styles.allergenRow, hasAllergenConflict && styles.allergenRowConflict]}>
-          <Text style={styles.allergenLabel}>
-            {hasAllergenConflict ? '⚠ Contains Your Allergen: ' : 'Allergens: '}
+          <Ionicons
+            name={hasAllergenConflict ? 'warning' : 'information-circle-outline'}
+            size={15}
+            color={hasAllergenConflict ? colors.error : colors.textSecondary}
+          />
+          <Text style={[styles.allergenText, hasAllergenConflict && styles.allergenTextConflict]}>
+            <Text style={styles.allergenLabel}>
+              {hasAllergenConflict ? 'Contains your allergen: ' : 'Allergens: '}
+            </Text>
+            {dishAllergens.join(', ')}
           </Text>
-          <Text style={styles.allergenText}>{dishAllergens.join(', ')}</Text>
         </View>
       )}
 
@@ -804,12 +879,33 @@ function FoodCard({
   );
 }
 
-function MacroItem({ label, value, unit }: { label: string; value: number; unit: string }) {
+function MacroItem({
+  label,
+  value,
+  unit,
+  dot,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  dot?: string;
+  highlight?: boolean;
+}) {
   return (
-    <View style={styles.macroItem}>
-      <Text style={styles.macroValue}>{value ?? 0}</Text>
-      <Text style={styles.macroUnit}>{unit}</Text>
-      <Text style={styles.macroLabel}>{label}</Text>
+    <View style={styles.macroItemOuter}>
+      <View style={[styles.macroItem, highlight && styles.macroItemHighlight]}>
+        <Text style={[styles.macroValue, highlight && { color: colors.textOnDark }]}>
+          {value ?? 0}
+          <Text style={[styles.macroUnit, highlight && { color: 'rgba(255,255,255,0.7)' }]}> {unit}</Text>
+        </Text>
+        <View style={styles.macroLabelRow}>
+          {dot ? <View style={[styles.macroDot, { backgroundColor: dot }]} /> : null}
+          <Text style={[styles.macroLabel, highlight && { color: 'rgba(255,255,255,0.75)' }]}>
+            {label}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -833,16 +929,16 @@ function TotalsCard({ totals }: { totals: any }) {
   const fatPct = Math.max(0, 100 - proteinPct - carbsPct);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.sectionLabel}>Meal Totals</Text>
-
+    <View style={[styles.card, styles.totalsCard]}>
       <View style={styles.totalsHeaderRow}>
         <View>
+          <Text style={styles.sectionLabel}>Meal totals</Text>
           <Text style={styles.totalsCalories} maxFontSizeMultiplier={1.3}>
             {calories}
+            <Text style={styles.totalsCaloriesUnit}> kcal</Text>
           </Text>
-          <Text style={styles.totalsCaloriesUnit}>total calories</Text>
         </View>
+        <IconBubble name="flame" size={44} color={colors.moderate} background={colors.moderateSoft} />
       </View>
 
       {/* Horizontal Stacked Macro Bar */}
@@ -850,45 +946,28 @@ function TotalsCard({ totals }: { totals: any }) {
         <View
           style={[
             styles.stackedBarSegment,
-            { width: `${proteinPct}%`, backgroundColor: colors.accent },
+            { width: `${proteinPct}%`, backgroundColor: macroColors.protein },
           ]}
         />
         <View
           style={[
             styles.stackedBarSegment,
-            { width: `${carbsPct}%`, backgroundColor: colors.moderate },
+            { width: `${carbsPct}%`, backgroundColor: macroColors.carbs },
           ]}
         />
         <View
           style={[
             styles.stackedBarSegment,
-            { width: `${fatPct}%`, backgroundColor: colors.limit },
+            { width: `${fatPct}%`, backgroundColor: macroColors.fat },
           ]}
         />
       </View>
 
       {/* Macro Legend */}
       <View style={styles.macroLegendRow}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
-          <Text style={styles.legendText}>
-            Protein <Text style={styles.legendValue}>{protein}g</Text> ({proteinPct}%)
-          </Text>
-        </View>
-
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: colors.moderate }]} />
-          <Text style={styles.legendText}>
-            Carbs <Text style={styles.legendValue}>{carbs}g</Text> ({carbsPct}%)
-          </Text>
-        </View>
-
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: colors.limit }]} />
-          <Text style={styles.legendText}>
-            Fat <Text style={styles.legendValue}>{fat}g</Text> ({fatPct}%)
-          </Text>
-        </View>
+        <LegendItem color={macroColors.protein} label="Protein" grams={protein} pct={proteinPct} />
+        <LegendItem color={macroColors.carbs} label="Carbs" grams={carbs} pct={carbsPct} />
+        <LegendItem color={macroColors.fat} label="Fat" grams={fat} pct={fatPct} />
       </View>
 
       {/* Secondary Micronutrients */}
@@ -910,6 +989,30 @@ function TotalsCard({ totals }: { totals: any }) {
   );
 }
 
+function LegendItem({
+  color,
+  label,
+  grams,
+  pct,
+}: {
+  color: string;
+  label: string;
+  grams: number;
+  pct: number;
+}) {
+  return (
+    <View style={styles.legendItem}>
+      <View style={styles.legendTop}>
+        <View style={[styles.legendDot, { backgroundColor: color }]} />
+        <Text style={styles.legendText}>{label}</Text>
+      </View>
+      <Text style={styles.legendValue}>
+        {grams}g <Text style={styles.legendPct}>{pct}%</Text>
+      </Text>
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
@@ -926,34 +1029,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: spacing.md,
   },
   title: {
-    fontSize: 32,
+    fontSize: 30,
+    lineHeight: 36,
     fontFamily: fonts.display,
     color: colors.textPrimary,
-    marginTop: spacing.sm,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: fonts.body,
     color: colors.textSecondary,
-    marginBottom: spacing.sm,
+    marginTop: 2,
   },
   editMealToggleBtn: {
-    borderWidth: 1,
-    borderColor: colors.textPrimary,
-    borderRadius: radii.button,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.pill,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 9,
   },
   editMealToggleBtnActive: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
   },
   editMealToggleText: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
+    color: colors.accent,
   },
   editMealToggleTextActive: {
     color: colors.textSecondary,
@@ -961,9 +1066,10 @@ const styles = StyleSheet.create({
 
   // Allergen Alert Banner
   allergenAlertBanner: {
-    backgroundColor: 'rgba(185, 28, 28, 0.1)',
-    borderWidth: 1,
-    borderColor: colors.error,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+    backgroundColor: colors.errorSoft,
     borderRadius: radii.card,
     padding: spacing.md,
     marginBottom: spacing.md,
@@ -972,7 +1078,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.bodySemiBold,
     color: colors.error,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   allergenAlertBody: {
     fontSize: 13,
@@ -984,21 +1090,20 @@ const styles = StyleSheet.create({
   // Meal Type Chips
   mealTypeRow: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: spacing.sm,
     marginBottom: spacing.md,
   },
   mealTypeChip: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingVertical: 10,
+    borderRadius: radii.button,
     backgroundColor: colors.surface,
     alignItems: 'center',
+    gap: 4,
+    ...shadows.card,
   },
   mealTypeChipActive: {
-    backgroundColor: colors.textPrimary,
-    borderColor: colors.textPrimary,
+    backgroundColor: colors.ink,
   },
   mealTypeChipText: {
     fontSize: 12,
@@ -1006,43 +1111,63 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   mealTypeChipTextActive: {
-    color: '#FFFFFF',
+    color: colors.textOnDark,
     fontFamily: fonts.bodySemiBold,
   },
 
   // Hero Image & Bounding Box
   heroWrapper: {
     width: '100%',
-    height: 220,
-    borderRadius: radii.card,
+    height: 240,
+    borderRadius: radii.card + 4,
     overflow: 'hidden',
     position: 'relative',
-    marginBottom: spacing.lg,
-    backgroundColor: colors.border,
+    marginBottom: spacing.md + 4,
+    backgroundColor: colors.surfaceMuted,
   },
   heroImage: {
     width: '100%',
     height: '100%',
   },
+  heroHint: {
+    position: 'absolute',
+    right: spacing.sm,
+    bottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+  },
+  heroHintText: {
+    color: colors.textOnDark,
+    fontSize: 11,
+    fontFamily: fonts.bodyMedium,
+  },
   bboxBox: {
     position: 'absolute',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: 2.5,
+    borderColor: '#B9F0B9',
+    borderRadius: 10,
+    backgroundColor: 'rgba(185, 240, 185, 0.12)',
+  },
+  bboxBoxPressed: {
+    backgroundColor: 'rgba(185, 240, 185, 0.3)',
   },
   bboxLabelWrap: {
     position: 'absolute',
-    top: -20,
-    left: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    top: -22,
+    left: -2,
+    backgroundColor: colors.ink,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
   },
   bboxLabelText: {
-    color: '#FFFFFF',
-    fontSize: 10,
+    color: colors.textOnDark,
+    fontSize: 11,
     fontFamily: fonts.bodySemiBold,
   },
 
@@ -1050,10 +1175,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.md + 4,
     marginBottom: spacing.md,
+    ...shadows.card,
   },
   cardAllergenConflict: {
     borderColor: colors.error,
@@ -1062,52 +1186,48 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: spacing.xs,
+    gap: spacing.sm,
+    marginTop: 6,
   },
   foodName: {
-    fontSize: 20,
+    fontSize: 21,
+    lineHeight: 26,
     fontFamily: fonts.display,
     color: colors.textPrimary,
   },
   trustBadge: {
-    borderRadius: 4,
-    borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   trustBadgeText: {
-    fontSize: 10,
+    fontSize: 11,
   },
   trustBadgeVerified: {
-    borderColor: colors.accent,
-    backgroundColor: 'rgba(44, 95, 46, 0.08)',
+    backgroundColor: colors.accentSoft,
   },
   trustBadgeVerifiedText: {
     color: colors.accent,
     fontFamily: fonts.bodySemiBold,
-    fontSize: 10,
+    fontSize: 11,
   },
   trustBadgeAi: {
-    borderColor: colors.textSecondary,
-    backgroundColor: 'rgba(107, 107, 107, 0.08)',
+    backgroundColor: colors.surfaceMuted,
   },
   trustBadgeAiText: {
     color: colors.textSecondary,
-    fontFamily: fonts.bodyMedium,
-    fontSize: 10,
-  },
-  confidenceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 11,
   },
   confidenceText: {
     fontSize: 12,
@@ -1115,105 +1235,113 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   wrongDishBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
     paddingVertical: 2,
   },
   wrongDishText: {
-    fontSize: 12,
-    fontFamily: fonts.bodyMedium,
-    color: colors.textPrimary,
-    textDecorationLine: 'underline',
+    fontSize: 13,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.accent,
   },
   scoreBlock: {
     alignItems: 'center',
-    minWidth: 55,
+    justifyContent: 'center',
+    minWidth: 66,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: radii.button + 2,
   },
   scoreNumber: {
-    fontSize: 32,
+    fontSize: 28,
     fontFamily: fonts.display,
-    lineHeight: 36,
+    lineHeight: 32,
   },
   scoreLabel: {
     fontSize: 10,
     fontFamily: fonts.bodySemiBold,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
   },
 
   // Portion Controls
   portionSection: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    backgroundColor: colors.background,
+    borderRadius: radii.button + 2,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.md,
   },
   portionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm + 2,
   },
   portionLabel: {
-    fontSize: 13,
-    fontFamily: fonts.bodyMedium,
-    color: colors.textSecondary,
+    fontSize: 14,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
   },
   stepperContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.button,
-    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderRadius: radii.pill,
+    padding: 3,
+    ...shadows.card,
   },
   stepBtn: {
-    width: 32,
-    height: 30,
-    backgroundColor: colors.background,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.surfaceMuted,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  stepBtnText: {
-    fontSize: 16,
-    fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
-  },
   stepValueBox: {
-    paddingHorizontal: 12,
+    minWidth: 60,
+    paddingHorizontal: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   stepValueText: {
-    fontSize: 13,
-    fontFamily: fonts.bodySemiBold,
+    fontSize: 16,
+    fontFamily: fonts.display,
     color: colors.textPrimary,
   },
   portionChipsRow: {
     flexDirection: 'row',
-    gap: spacing.xs,
-    marginTop: 4,
+    gap: spacing.sm,
   },
   portionChip: {
     flex: 1,
-    paddingVertical: 6,
-    borderRadius: radii.button,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
+    paddingVertical: 8,
+    borderRadius: radii.input,
+    backgroundColor: colors.surface,
     alignItems: 'center',
   },
   portionChipActive: {
-    backgroundColor: colors.textPrimary,
-    borderColor: colors.textPrimary,
+    backgroundColor: colors.accent,
   },
   portionChipText: {
-    fontSize: 11,
-    fontFamily: fonts.bodyMedium,
-    color: colors.textSecondary,
+    fontSize: 13,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
   },
   portionChipTextActive: {
-    color: '#FFFFFF',
-    fontFamily: fonts.bodySemiBold,
+    color: colors.textOnDark,
+  },
+  portionChipSub: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  portionChipSubActive: {
+    color: 'rgba(255, 255, 255, 0.8)',
   },
 
   // Macro Display & Unit Toggle
@@ -1221,160 +1349,204 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm + 2,
   },
   macroHeaderCaption: {
     fontSize: 12,
-    fontFamily: fonts.body,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  unitToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    padding: 3,
+  },
+  unitToggleOpt: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: radii.pill,
+  },
+  unitToggleOptActive: {
+    backgroundColor: colors.surface,
+    ...shadows.card,
+  },
+  unitToggleText: {
+    fontSize: 12,
+    fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
   },
-  toggleUnitBtn: {
-    paddingVertical: 2,
-    paddingHorizontal: 4,
-  },
-  toggleUnitText: {
-    fontSize: 11,
-    fontFamily: fonts.bodyMedium,
+  unitToggleTextActive: {
+    fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
-    textDecorationLine: 'underline',
   },
   macroGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: spacing.xs,
+    marginHorizontal: -4,
+  },
+  macroItemOuter: {
+    width: '33.333%',
+    padding: 4,
   },
   macroItem: {
-    width: '33.3%',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
+    backgroundColor: colors.background,
+    borderRadius: radii.input,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  macroItemHighlight: {
+    backgroundColor: colors.ink,
   },
   macroValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontFamily: fonts.display,
     color: colors.textPrimary,
   },
   macroUnit: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fonts.body,
     color: colors.textSecondary,
+  },
+  macroLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  macroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   macroLabel: {
     fontSize: 11,
     fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
-    marginTop: 2,
   },
 
   // Tags & Allergens
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: spacing.xs,
+    gap: 6,
+    marginTop: spacing.sm + 4,
   },
   tag: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginRight: 6,
-    marginBottom: 4,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   tagText: {
     fontSize: 11,
-    fontFamily: fonts.body,
+    fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
   },
   allergenRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: spacing.xs,
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: spacing.sm + 4,
   },
   allergenRowConflict: {
-    backgroundColor: 'rgba(185, 28, 28, 0.08)',
-    padding: 6,
-    borderRadius: 6,
+    backgroundColor: colors.errorSoft,
+    padding: spacing.sm + 2,
+    borderRadius: radii.input,
   },
   allergenLabel: {
-    fontSize: 12,
     fontFamily: fonts.bodySemiBold,
-    color: colors.error,
   },
   allergenText: {
+    flex: 1,
     fontSize: 12,
+    lineHeight: 17,
     fontFamily: fonts.body,
+    color: colors.textSecondary,
+  },
+  allergenTextConflict: {
     color: colors.error,
   },
   giText: {
     fontSize: 12,
     fontFamily: fonts.body,
     color: colors.textSecondary,
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
   },
 
   // Add Dish Button
   addDishBtn: {
-    borderWidth: 1,
-    borderColor: colors.textPrimary,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    borderWidth: 1.5,
+    borderColor: '#BFD6BB',
     borderStyle: 'dashed',
-    borderRadius: radii.button,
-    paddingVertical: 12,
+    borderRadius: radii.card,
+    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(229, 239, 226, 0.5)',
   },
   addDishBtnText: {
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
+    color: colors.accent,
   },
 
   // Totals Card Styles
+  totalsCard: {
+    paddingBottom: spacing.md,
+  },
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: fonts.bodySemiBold,
     color: colors.textSecondary,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   totalsHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
+    alignItems: 'center',
     marginBottom: spacing.md,
   },
   totalsCalories: {
-    fontSize: 48,
+    fontSize: 40,
     fontFamily: fonts.display,
     color: colors.textPrimary,
-    lineHeight: 52,
+    lineHeight: 46,
   },
   totalsCaloriesUnit: {
-    fontSize: 13,
-    fontFamily: fonts.body,
+    fontSize: 15,
+    fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
   },
   stackedBarContainer: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.border,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.surfaceMuted,
     flexDirection: 'row',
     overflow: 'hidden',
-    marginBottom: spacing.sm,
+    gap: 2,
+    marginBottom: spacing.md,
   },
   stackedBarSegment: {
     height: '100%',
+    borderRadius: 6,
   },
   macroLegendRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
     marginBottom: spacing.md,
-    gap: spacing.xs,
   },
   legendItem: {
+    flex: 1,
+  },
+  legendTop: {
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -1386,22 +1558,30 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 12,
-    fontFamily: fonts.body,
+    fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
   },
   legendValue: {
-    fontFamily: fonts.bodySemiBold,
+    fontSize: 16,
+    fontFamily: fonts.display,
     color: colors.textPrimary,
+    marginTop: 2,
+  },
+  legendPct: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
   },
   microGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
+    gap: spacing.sm,
   },
   microItem: {
+    flex: 1,
     alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: radii.input,
+    paddingVertical: 10,
   },
   microValue: {
     fontSize: 16,
@@ -1422,22 +1602,23 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     flexDirection: 'row',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     gap: spacing.sm,
+    ...shadows.bar,
   },
   bottomSecondaryBtn: {
     flex: 1,
+    flexDirection: 'row',
+    gap: 6,
     borderRadius: radii.button,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 14,
+    paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceMuted,
   },
   bottomSecondaryBtnText: {
     color: colors.textPrimary,
@@ -1445,10 +1626,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodySemiBold,
   },
   bottomPrimaryBtn: {
-    flex: 1.6,
+    flex: 2,
+    flexDirection: 'row',
+    gap: spacing.sm,
     borderRadius: radii.button,
-    backgroundColor: colors.textPrimary,
-    paddingVertical: 14,
+    backgroundColor: colors.ink,
+    paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1456,42 +1639,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   bottomPrimaryBtnText: {
-    color: '#FFFFFF',
+    color: colors.textOnDark,
     fontSize: 15,
-    fontFamily: fonts.bodySemiBold,
-  },
-
-  // Floating Undo Toast
-  toastFloating: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-    backgroundColor: colors.textPrimary,
-    borderRadius: radii.card,
-    paddingVertical: 12,
-    paddingHorizontal: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  toastText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: fonts.bodyMedium,
-  },
-  toastUndoBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: radii.button,
-  },
-  toastUndoText: {
-    color: '#FFFFFF',
-    fontSize: 13,
     fontFamily: fonts.bodySemiBold,
   },
 
@@ -1504,6 +1653,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: fonts.display,
     color: colors.textPrimary,
+    marginTop: spacing.md,
   },
   emptyBody: {
     fontSize: 15,
@@ -1511,5 +1661,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.sm,
     textAlign: 'center',
+    maxWidth: 300,
   },
 });

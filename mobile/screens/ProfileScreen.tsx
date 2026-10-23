@@ -4,27 +4,32 @@
  *
  * Features:
  *   • Wrapped in KeyboardAvoidingView with keyboardShouldPersistTaps="handled".
- *   • Auth form: labels above inputs, Show/Hide password toggle, returnKeyType chaining,
- *     autoComplete/textContentType, and inline validation messages.
+ *   • Auth form: Log in / Sign up segmented switch, icon inputs with focus highlight,
+ *     eye Show/Hide password toggle, returnKeyType chaining, autoComplete/textContentType,
+ *     and inline validation messages.
  *   • Friendly error messages for auth (401, 409, network).
  *   • Body stats edit: range validation (weight 20-300kg, height 100-250cm, age 10-100),
  *     input unit suffixes, non-destructive payloads, and saving spinner state.
  *   • Targets updated toast after saving profile changes.
  *   • Confirmed 1-tap logout navigating directly to Home.
- *   • Two-line descriptive chips for Activity Levels and Goals with subtitles.
+ *   • Radio-style descriptive cards for Activity Levels, Goals and Dietary Modes.
+ *   • Smooth LayoutAnimation when expanding / switching sections.
  */
 import React, { useState, useCallback, useContext, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TextInput, TouchableOpacity, ActivityIndicator,
-  KeyboardAvoidingView, Platform,
+  TextInput, TextInputProps, Pressable, ActivityIndicator,
+  KeyboardAvoidingView, Platform, LayoutAnimation,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { colors, spacing, radii, fonts, typography } from '../theme/tokens';
+import { colors, spacing, radii, fonts, shadows, macroColors } from '../theme/tokens';
 import * as api from '../services/api';
 import AppModal, { ModalState } from '../components/AppModal';
 import { AuthContext } from '../context/AuthContext';
+import { FadeInView, IconBubble, IconName, PressableScale, Toast } from '../components/ui';
 
 const ACTIVITY_LEVELS = [
   { id: 'sedentary', label: 'Sedentary', sub: 'Desk job / little exercise' },
@@ -67,7 +72,13 @@ const COMMON_ALLERGENS = [
   { id: 'sesame', label: 'Sesame' },
 ];
 
+/** Ease the next layout change (expand / collapse / swap) instead of jumping. */
+function animateLayout() {
+  LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+}
+
 export default function ProfileScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const { setIsAdmin } = useContext(AuthContext);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -113,6 +124,7 @@ export default function ProfileScreen({ navigation }: any) {
     const next = exists
       ? current.filter((a) => a !== allergenId)
       : [...current, allergenId];
+    Haptics.selectionAsync().catch(() => {});
     setForm({ ...form, allergens: next });
   };
 
@@ -152,6 +164,7 @@ export default function ProfileScreen({ navigation }: any) {
 
       const updated = await api.updateProfile(payload);
       setProfile(updated);
+      animateLayout();
       setEditing(false);
 
       const newCal = updated.daily_targets?.calories;
@@ -191,7 +204,7 @@ export default function ProfileScreen({ navigation }: any) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.textPrimary} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -199,244 +212,243 @@ export default function ProfileScreen({ navigation }: any) {
   if (!profile) {
     return (
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={{ flex: 1, backgroundColor: colors.background }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <AuthForm onSuccess={loadProfile} showModal={setModal} />
+        <AuthForm onSuccess={loadProfile} showModal={setModal} topInset={insets.top} />
         <AppModal state={modal} onClose={() => setModal(null)} />
       </KeyboardAvoidingView>
     );
   }
 
   const targets = profile.daily_targets || {};
+  const initial = (profile.email || '?').charAt(0).toUpperCase();
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: colors.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
         style={styles.container}
-        contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.xxl }}
+        contentContainerStyle={{
+          paddingHorizontal: spacing.md,
+          paddingTop: insets.top + spacing.md,
+          paddingBottom: spacing.xxl,
+        }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Profile</Text>
-        <Text style={styles.email}>{profile.email}</Text>
+        {/* Profile Header */}
+        <FadeInView style={styles.profileHeader}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initial}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Profile</Text>
+            <Text style={styles.email} numberOfLines={1}>{profile.email}</Text>
+          </View>
+          {profile.is_admin ? (
+            <View style={styles.adminBadge}>
+              <Ionicons name="shield-checkmark" size={12} color={colors.accent} />
+              <Text style={styles.adminBadgeText}>Admin</Text>
+            </View>
+          ) : null}
+        </FadeInView>
 
         {/* Daily Targets Card */}
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Daily Targets</Text>
+        <FadeInView delay={60} style={styles.card}>
+          <Text style={styles.sectionLabel}>Daily targets</Text>
           <View style={styles.targetGrid}>
-            <TargetItem label="Calories" value={targets.calories} unit="kcal" />
-            <TargetItem label="Protein" value={targets.protein} unit="g" />
-            <TargetItem label="Fat" value={targets.fat} unit="g" />
-            <TargetItem label="Carbs" value={targets.carbs} unit="g" />
+            <TargetItem icon="flame" color={colors.moderate} label="Calories" value={targets.calories} unit="kcal" />
+            <TargetItem icon="barbell-outline" color={macroColors.protein} label="Protein" value={targets.protein} unit="g" />
+            <TargetItem icon="water-outline" color={macroColors.fat} label="Fat" value={targets.fat} unit="g" />
+            <TargetItem icon="leaf-outline" color={macroColors.carbs} label="Carbs" value={targets.carbs} unit="g" />
           </View>
 
           {/* TDEE Breakdown Toggle */}
-          <TouchableOpacity
-            onPress={() => setShowTDEE(!showTDEE)}
+          <Pressable
+            onPress={() => {
+              animateLayout();
+              setShowTDEE(!showTDEE);
+            }}
             style={styles.tdeeToggleRow}
-            activeOpacity={0.7}
             accessibilityRole="button"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
+            <Ionicons name="calculator-outline" size={15} color={colors.textSecondary} />
             <Text style={styles.tdeeToggleText}>
               {showTDEE ? 'Hide calculation details' : 'How are these calculated?'}
             </Text>
-          </TouchableOpacity>
+            <Ionicons
+              name={showTDEE ? 'chevron-up' : 'chevron-down'}
+              size={15}
+              color={colors.textSecondary}
+            />
+          </Pressable>
 
           {showTDEE && (
             <View style={styles.tdeeExplainerBox}>
-              <Text style={styles.tdeeExplainerLine}>
-                • <Text style={{ fontFamily: fonts.bodySemiBold }}>BMR</Text> uses the Mifflin-St Jeor formula based on your body weight, height, age, and biological sex.
-              </Text>
-              <Text style={styles.tdeeExplainerLine}>
-                • <Text style={{ fontFamily: fonts.bodySemiBold }}>TDEE</Text> multiplies BMR by your physical activity level.
-              </Text>
-              <Text style={styles.tdeeExplainerLine}>
-                • <Text style={{ fontFamily: fonts.bodySemiBold }}>Goal Adjustment</Text>: −20% deficit for weight loss, +15% surplus for muscle gain.
-              </Text>
-              <Text style={styles.tdeeExplainerLine}>
-                • <Text style={{ fontFamily: fonts.bodySemiBold }}>Balanced Macros</Text>: 25% Protein, 25% Healthy Fat, 50% Complex Carbs.
-              </Text>
+              <ExplainerLine title="BMR">
+                uses the Mifflin-St Jeor formula based on your body weight, height, age, and biological sex.
+              </ExplainerLine>
+              <ExplainerLine title="TDEE">multiplies BMR by your physical activity level.</ExplainerLine>
+              <ExplainerLine title="Goal Adjustment">
+                −20% deficit for weight loss, +15% surplus for muscle gain.
+              </ExplainerLine>
+              <ExplainerLine title="Balanced Macros">
+                25% Protein, 25% Healthy Fat, 50% Complex Carbs.
+              </ExplainerLine>
             </View>
           )}
-        </View>
+        </FadeInView>
 
         {/* Body Stats Card */}
-        <View style={styles.card}>
+        <FadeInView delay={120} style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.sectionLabel}>Body Stats & Goals</Text>
-            <TouchableOpacity
-              onPress={() => setEditing(!editing)}
-              activeOpacity={0.7}
+            <Text style={[styles.sectionLabel, { marginBottom: 0 }]}>Body stats & goals</Text>
+            <PressableScale
+              onPress={() => {
+                animateLayout();
+                setEditing(!editing);
+              }}
+              style={[styles.editBtn, editing && styles.editBtnActive]}
               accessibilityRole="button"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.editBtn}>{editing ? 'Cancel' : 'Edit'}</Text>
-            </TouchableOpacity>
+              <Ionicons
+                name={editing ? 'close' : 'create-outline'}
+                size={15}
+                color={editing ? colors.textSecondary : colors.accent}
+              />
+              <Text style={[styles.editBtnText, editing && { color: colors.textSecondary }]}>
+                {editing ? 'Cancel' : 'Edit'}
+              </Text>
+            </PressableScale>
           </View>
 
           {editing ? (
             <View>
-              {/* Weight */}
-              <View style={styles.fieldWrapper}>
-                <Text style={styles.fieldLabel}>Weight</Text>
-                <View style={styles.inputWithSuffix}>
-                  <TextInput
-                    style={styles.suffixInput}
+              <View style={styles.fieldRow}>
+                {/* Weight */}
+                <View style={[styles.fieldWrapper, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>Weight</Text>
+                  <FocusInput
                     value={form.weight_kg}
                     onChangeText={(v) => {
                       setForm({ ...form, weight_kg: v });
                       if (fieldErrors.weight_kg) setFieldErrors({ ...fieldErrors, weight_kg: '' });
                     }}
                     keyboardType="numeric"
-                    placeholder="e.g. 70"
-                    placeholderTextColor={colors.textSecondary}
+                    placeholder="70"
+                    suffix="kg"
+                    hasError={!!fieldErrors.weight_kg}
                   />
-                  <Text style={styles.suffixText}>kg</Text>
                 </View>
-                {fieldErrors.weight_kg ? (
-                  <Text style={styles.fieldErrorText}>{fieldErrors.weight_kg}</Text>
-                ) : null}
-              </View>
 
-              {/* Height */}
-              <View style={styles.fieldWrapper}>
-                <Text style={styles.fieldLabel}>Height</Text>
-                <View style={styles.inputWithSuffix}>
-                  <TextInput
-                    style={styles.suffixInput}
+                {/* Height */}
+                <View style={[styles.fieldWrapper, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>Height</Text>
+                  <FocusInput
                     value={form.height_cm}
                     onChangeText={(v) => {
                       setForm({ ...form, height_cm: v });
                       if (fieldErrors.height_cm) setFieldErrors({ ...fieldErrors, height_cm: '' });
                     }}
                     keyboardType="numeric"
-                    placeholder="e.g. 175"
-                    placeholderTextColor={colors.textSecondary}
+                    placeholder="175"
+                    suffix="cm"
+                    hasError={!!fieldErrors.height_cm}
                   />
-                  <Text style={styles.suffixText}>cm</Text>
                 </View>
-                {fieldErrors.height_cm ? (
-                  <Text style={styles.fieldErrorText}>{fieldErrors.height_cm}</Text>
-                ) : null}
-              </View>
 
-              {/* Age */}
-              <View style={styles.fieldWrapper}>
-                <Text style={styles.fieldLabel}>Age</Text>
-                <View style={styles.inputWithSuffix}>
-                  <TextInput
-                    style={styles.suffixInput}
+                {/* Age */}
+                <View style={[styles.fieldWrapper, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>Age</Text>
+                  <FocusInput
                     value={form.age}
                     onChangeText={(v) => {
                       setForm({ ...form, age: v });
                       if (fieldErrors.age) setFieldErrors({ ...fieldErrors, age: '' });
                     }}
                     keyboardType="numeric"
-                    placeholder="e.g. 25"
-                    placeholderTextColor={colors.textSecondary}
+                    placeholder="25"
+                    suffix="yrs"
+                    hasError={!!fieldErrors.age}
                   />
-                  <Text style={styles.suffixText}>years</Text>
                 </View>
-                {fieldErrors.age ? (
-                  <Text style={styles.fieldErrorText}>{fieldErrors.age}</Text>
-                ) : null}
               </View>
-
-              {/* Activity Level */}
-              <Text style={styles.fieldLabel}>Activity Level</Text>
-              <View style={styles.chipStack}>
-                {ACTIVITY_LEVELS.map((lvl) => {
-                  const isSelected = form.activity_level === lvl.id;
-                  return (
-                    <TouchableOpacity
-                      key={lvl.id}
-                      style={[styles.descriptiveChip, isSelected && styles.descriptiveChipActive]}
-                      onPress={() => setForm({ ...form, activity_level: lvl.id })}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.descriptiveChipTitle, isSelected && styles.descriptiveChipTitleActive]}>
-                        {lvl.label}
-                      </Text>
-                      <Text style={[styles.descriptiveChipSub, isSelected && styles.descriptiveChipSubActive]}>
-                        {lvl.sub}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* Goal */}
-              <Text style={styles.fieldLabel}>Dietary Goal</Text>
-              <View style={styles.chipStack}>
-                {GOALS.map((g) => {
-                  const isSelected = form.goal === g.id;
-                  return (
-                    <TouchableOpacity
-                      key={g.id}
-                      style={[styles.descriptiveChip, isSelected && styles.descriptiveChipActive]}
-                      onPress={() => setForm({ ...form, goal: g.id })}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.descriptiveChipTitle, isSelected && styles.descriptiveChipTitleActive]}>
-                        {g.label}
-                      </Text>
-                      <Text style={[styles.descriptiveChipSub, isSelected && styles.descriptiveChipSubActive]}>
-                        {g.sub}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              {[fieldErrors.weight_kg, fieldErrors.height_cm, fieldErrors.age]
+                .filter(Boolean)
+                .map((err) => (
+                  <Text key={err} style={styles.fieldErrorText}>{err}</Text>
+                ))}
 
               {/* Gender */}
-              <Text style={styles.fieldLabel}>Biological Sex</Text>
+              <Text style={[styles.fieldLabel, styles.groupLabel]}>Biological Sex</Text>
               <View style={styles.genderRow}>
                 {GENDERS.map((g) => {
                   const isSelected = form.gender === g.id;
                   return (
-                    <TouchableOpacity
+                    <Pressable
                       key={g.id}
                       style={[styles.genderChip, isSelected && styles.genderChipActive]}
                       onPress={() => setForm({ ...form, gender: g.id })}
-                      activeOpacity={0.7}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <Text style={[styles.genderChipText, isSelected && styles.genderChipTextActive]}>
                         {g.label}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
+              </View>
+
+              {/* Activity Level */}
+              <Text style={[styles.fieldLabel, styles.groupLabel]}>Activity Level</Text>
+              <View style={styles.chipStack}>
+                {ACTIVITY_LEVELS.map((lvl) => (
+                  <ChoiceCard
+                    key={lvl.id}
+                    label={lvl.label}
+                    sub={lvl.sub}
+                    selected={form.activity_level === lvl.id}
+                    onPress={() => setForm({ ...form, activity_level: lvl.id })}
+                  />
+                ))}
+              </View>
+
+              {/* Goal */}
+              <Text style={[styles.fieldLabel, styles.groupLabel]}>Dietary Goal</Text>
+              <View style={styles.chipStack}>
+                {GOALS.map((g) => (
+                  <ChoiceCard
+                    key={g.id}
+                    label={g.label}
+                    sub={g.sub}
+                    selected={form.goal === g.id}
+                    onPress={() => setForm({ ...form, goal: g.id })}
+                  />
+                ))}
               </View>
 
               {/* Dietary Mode */}
-              <Text style={styles.fieldLabel}>Dietary Mode (Macro Split)</Text>
+              <Text style={[styles.fieldLabel, styles.groupLabel]}>Dietary Mode (Macro Split)</Text>
               <View style={styles.chipStack}>
-                {DIETARY_MODES.map((dm) => {
-                  const isSelected = (form.dietary_mode || 'standard') === dm.id;
-                  return (
-                    <TouchableOpacity
-                      key={dm.id}
-                      style={[styles.descriptiveChip, isSelected && styles.descriptiveChipActive]}
-                      onPress={() => setForm({ ...form, dietary_mode: dm.id })}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.descriptiveChipTitle, isSelected && styles.descriptiveChipTitleActive]}>
-                        {dm.label}
-                      </Text>
-                      <Text style={[styles.descriptiveChipSub, isSelected && styles.descriptiveChipSubActive]}>
-                        {dm.sub}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                {DIETARY_MODES.map((dm) => (
+                  <ChoiceCard
+                    key={dm.id}
+                    label={dm.label}
+                    sub={dm.sub}
+                    selected={(form.dietary_mode || 'standard') === dm.id}
+                    onPress={() => setForm({ ...form, dietary_mode: dm.id })}
+                  />
+                ))}
               </View>
 
               {/* Allergens */}
-              <Text style={styles.fieldLabel}>Food Allergies & Restrictions</Text>
+              <Text style={[styles.fieldLabel, styles.groupLabel]}>Food Allergies & Restrictions</Text>
               <Text style={styles.allergenHelperText}>
                 We will alert you when a scanned dish contains any of your selected allergens.
               </Text>
@@ -444,59 +456,65 @@ export default function ProfileScreen({ navigation }: any) {
                 {COMMON_ALLERGENS.map((alg) => {
                   const selected = Array.isArray(form.allergens) && form.allergens.includes(alg.id);
                   return (
-                    <TouchableOpacity
+                    <PressableScale
                       key={alg.id}
                       style={[styles.allergenChip, selected && styles.allergenChipActive]}
                       onPress={() => toggleAllergen(alg.id)}
-                      activeOpacity={0.7}
+                      scaleTo={0.94}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
                     >
+                      {selected ? (
+                        <Ionicons name="alert-circle" size={14} color={colors.error} />
+                      ) : null}
                       <Text style={[styles.allergenChipText, selected && styles.allergenChipTextActive]}>
-                        {selected ? `⚠ ${alg.label}` : alg.label}
+                        {alg.label}
                       </Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   );
                 })}
               </View>
 
-              <TouchableOpacity
-                style={[styles.btnPrimary, saving && { opacity: 0.7 }]}
+              <PressableScale
+                style={styles.btnPrimary}
                 onPress={handleSave}
                 disabled={saving}
-                activeOpacity={0.8}
               >
                 {saving ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={colors.textOnDark} />
                 ) : (
-                  <Text style={styles.btnPrimaryText}>Save Changes</Text>
+                  <>
+                    <Ionicons name="checkmark" size={18} color={colors.textOnDark} />
+                    <Text style={styles.btnPrimaryText}>Save Changes</Text>
+                  </>
                 )}
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           ) : (
             <View>
-              <StatRow label="Weight" value={profile.weight_kg ? `${profile.weight_kg} kg` : '—'} />
-              <StatRow label="Height" value={profile.height_cm ? `${profile.height_cm} cm` : '—'} />
-              <StatRow label="Age" value={profile.age ? `${profile.age} years` : '—'} />
-              <StatRow label="Biological Sex" value={profile.gender ? capitalize(profile.gender) : '—'} />
-              <StatRow label="Activity Level" value={formatActivity(profile.activity_level)} />
-              <StatRow label="Goal" value={formatGoal(profile.goal)} />
-              <StatRow label="Dietary Mode" value={formatDietaryMode(profile.dietary_mode)} />
-              <StatRow label="Allergies" value={formatAllergens(profile.allergens)} />
+              <StatRow icon="scale-outline" label="Weight" value={profile.weight_kg ? `${profile.weight_kg} kg` : '—'} />
+              <StatRow icon="resize-outline" label="Height" value={profile.height_cm ? `${profile.height_cm} cm` : '—'} />
+              <StatRow icon="calendar-outline" label="Age" value={profile.age ? `${profile.age} years` : '—'} />
+              <StatRow icon="person-outline" label="Biological Sex" value={profile.gender ? capitalize(profile.gender) : '—'} />
+              <StatRow icon="walk-outline" label="Activity Level" value={formatActivity(profile.activity_level)} />
+              <StatRow icon="flag-outline" label="Goal" value={formatGoal(profile.goal)} />
+              <StatRow icon="pie-chart-outline" label="Dietary Mode" value={formatDietaryMode(profile.dietary_mode)} />
+              <StatRow icon="alert-circle-outline" label="Allergies" value={formatAllergens(profile.allergens)} isLast />
             </View>
           )}
-        </View>
+        </FadeInView>
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.btnLogout} onPress={handleLogoutConfirm} activeOpacity={0.7}>
-          <Text style={styles.btnLogoutText}>Log Out</Text>
-        </TouchableOpacity>
+        <FadeInView delay={180}>
+          <PressableScale style={styles.btnLogout} onPress={handleLogoutConfirm}>
+            <Ionicons name="log-out-outline" size={18} color={colors.error} />
+            <Text style={styles.btnLogoutText}>Log Out</Text>
+          </PressableScale>
+        </FadeInView>
       </ScrollView>
 
       {/* Floating Notification Toast */}
-      {toastMessage && (
-        <View style={styles.toastFloating}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </View>
-      )}
+      <Toast message={toastMessage} />
 
       <AppModal state={modal} onClose={() => setModal(null)} />
     </KeyboardAvoidingView>
@@ -509,9 +527,11 @@ export default function ProfileScreen({ navigation }: any) {
 function AuthForm({
   onSuccess,
   showModal,
+  topInset,
 }: {
   onSuccess: () => void;
   showModal: (s: ModalState) => void;
+  topInset: number;
 }) {
   const { setIsAdmin } = useContext(AuthContext);
   const [isLogin, setIsLogin] = useState(true);
@@ -532,6 +552,13 @@ function AuthForm({
     activity_level: 'moderate',
     goal: 'maintain',
   });
+
+  const switchMode = (login: boolean) => {
+    if (login === isLogin) return;
+    animateLayout();
+    setIsLogin(login);
+    setErrors({});
+  };
 
   const validate = (): boolean => {
     const errs: { email?: string; password?: string } = {};
@@ -602,145 +629,174 @@ function AuthForm({
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.authContainer}
+      contentContainerStyle={[styles.authContainer, { paddingTop: topInset + spacing.xl }]}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.authTitle}>{isLogin ? 'Welcome Back' : 'Create Account'}</Text>
-      <Text style={styles.authSubtitle}>
-        {isLogin
-          ? 'Sign in to access your meal logs and nutrition goals'
-          : 'Set up your profile to receive personalized daily targets'}
-      </Text>
-
-      {/* Email Input */}
-      <View style={styles.fieldWrapper}>
-        <Text style={styles.fieldLabel}>Email Address</Text>
-        <TextInput
-          style={[styles.input, errors.email ? styles.inputError : null]}
-          placeholder="you@example.com"
-          placeholderTextColor={colors.textSecondary}
-          value={email}
-          onChangeText={(v) => {
-            setEmail(v);
-            if (errors.email) setErrors({ ...errors, email: undefined });
-          }}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoComplete="email"
-          textContentType="emailAddress"
-          returnKeyType="next"
-          onSubmitEditing={() => passwordInputRef.current?.focus()}
-        />
-        {errors.email ? <Text style={styles.fieldErrorText}>{errors.email}</Text> : null}
-      </View>
-
-      {/* Password Input */}
-      <View style={styles.fieldWrapper}>
-        <View style={styles.passwordLabelRow}>
-          <Text style={styles.fieldLabel}>Password</Text>
-          <TouchableOpacity
-            onPress={() => setShowPassword(!showPassword)}
-            accessibilityRole="button"
-            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.showHideText}>{showPassword ? 'Hide' : 'Show'}</Text>
-          </TouchableOpacity>
+      <FadeInView>
+        <View style={styles.authLogo}>
+          <Ionicons name="nutrition" size={30} color={colors.textOnDark} />
         </View>
-        <TextInput
-          ref={passwordInputRef}
-          style={[styles.input, errors.password ? styles.inputError : null]}
-          placeholder={isLogin ? 'Enter your password' : 'At least 8 characters'}
-          placeholderTextColor={colors.textSecondary}
-          value={password}
-          onChangeText={(v) => {
-            setPassword(v);
-            if (errors.password) setErrors({ ...errors, password: undefined });
-          }}
-          secureTextEntry={!showPassword}
-          autoCapitalize="none"
-          autoComplete={isLogin ? 'current-password' : 'new-password'}
-          textContentType={isLogin ? 'password' : 'newPassword'}
-          returnKeyType={isLogin ? 'go' : 'next'}
-          onSubmitEditing={isLogin ? handleSubmit : undefined}
-        />
-        {errors.password ? <Text style={styles.fieldErrorText}>{errors.password}</Text> : null}
-      </View>
-
-      {/* Registration-only Body Stats */}
-      {!isLogin && (
-        <View style={styles.regStatsSection}>
-          <Text style={[styles.sectionLabel, { marginTop: spacing.sm }]}>
-            Body Stats (Optional)
-          </Text>
-
-          <View style={styles.fieldWrapper}>
-            <Text style={styles.fieldLabel}>Weight (kg)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 70"
-              placeholderTextColor={colors.textSecondary}
-              value={regForm.weight_kg}
-              onChangeText={(v) => setRegForm({ ...regForm, weight_kg: v })}
-              keyboardType="numeric"
-            />
-          </View>
-
-          <View style={styles.fieldWrapper}>
-            <Text style={styles.fieldLabel}>Height (cm)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 175"
-              placeholderTextColor={colors.textSecondary}
-              value={regForm.height_cm}
-              onChangeText={(v) => setRegForm({ ...regForm, height_cm: v })}
-              keyboardType="numeric"
-            />
-          </View>
-
-          <View style={styles.fieldWrapper}>
-            <Text style={styles.fieldLabel}>Age</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 25"
-              placeholderTextColor={colors.textSecondary}
-              value={regForm.age}
-              onChangeText={(v) => setRegForm({ ...regForm, age: v })}
-              keyboardType="numeric"
-            />
-          </View>
-        </View>
-      )}
-
-      {/* Submit Button */}
-      <TouchableOpacity
-        style={[styles.btnPrimary, loading && { opacity: 0.7 }]}
-        onPress={handleSubmit}
-        disabled={loading}
-        activeOpacity={0.8}
-      >
-        {loading ? (
-          <ActivityIndicator color="#FFFFFF" />
-        ) : (
-          <Text style={styles.btnPrimaryText}>{isLogin ? 'Log In' : 'Create Account'}</Text>
-        )}
-      </TouchableOpacity>
-
-      {/* Switch Auth Mode */}
-      <TouchableOpacity
-        onPress={() => {
-          setIsLogin(!isLogin);
-          setErrors({});
-        }}
-        style={styles.switchAuthBtn}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.switchAuthText}>
+        <Text style={styles.authTitle}>{isLogin ? 'Welcome back' : 'Create account'}</Text>
+        <Text style={styles.authSubtitle}>
           {isLogin
-            ? "Don't have an account? Create one"
-            : 'Already have an account? Log In'}
+            ? 'Sign in to access your meal logs and nutrition goals'
+            : 'Set up your profile to receive personalized daily targets'}
         </Text>
-      </TouchableOpacity>
+
+        {/* Log in / Sign up segmented switch */}
+        <View style={styles.segment}>
+          {[
+            { login: true, label: 'Log in' },
+            { login: false, label: 'Sign up' },
+          ].map((opt) => {
+            const active = isLogin === opt.login;
+            return (
+              <Pressable
+                key={opt.label}
+                onPress={() => switchMode(opt.login)}
+                style={[styles.segmentOpt, active && styles.segmentOptActive]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+              >
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Email Input */}
+        <View style={styles.fieldWrapper}>
+          <Text style={styles.fieldLabel}>Email Address</Text>
+          <FocusInput
+            icon="mail-outline"
+            placeholder="you@example.com"
+            value={email}
+            onChangeText={(v) => {
+              setEmail(v);
+              if (errors.email) setErrors({ ...errors, email: undefined });
+            }}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
+            hasError={!!errors.email}
+          />
+          {errors.email ? <Text style={styles.fieldErrorText}>{errors.email}</Text> : null}
+        </View>
+
+        {/* Password Input */}
+        <View style={styles.fieldWrapper}>
+          <Text style={styles.fieldLabel}>Password</Text>
+          <FocusInput
+            ref={passwordInputRef}
+            icon="lock-closed-outline"
+            placeholder={isLogin ? 'Enter your password' : 'At least 8 characters'}
+            value={password}
+            onChangeText={(v) => {
+              setPassword(v);
+              if (errors.password) setErrors({ ...errors, password: undefined });
+            }}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoComplete={isLogin ? 'current-password' : 'new-password'}
+            textContentType={isLogin ? 'password' : 'newPassword'}
+            returnKeyType={isLogin ? 'go' : 'next'}
+            onSubmitEditing={isLogin ? handleSubmit : undefined}
+            hasError={!!errors.password}
+            trailing={
+              <Pressable
+                onPress={() => setShowPassword(!showPassword)}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </Pressable>
+            }
+          />
+          {errors.password ? <Text style={styles.fieldErrorText}>{errors.password}</Text> : null}
+        </View>
+
+        {/* Registration-only Body Stats */}
+        {!isLogin && (
+          <View style={styles.regStatsSection}>
+            <Text style={[styles.sectionLabel, { marginTop: spacing.sm }]}>
+              Body stats (optional)
+            </Text>
+
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldWrapper, { flex: 1 }]}>
+                <Text style={styles.fieldLabel}>Weight</Text>
+                <FocusInput
+                  placeholder="70"
+                  value={regForm.weight_kg}
+                  onChangeText={(v) => setRegForm({ ...regForm, weight_kg: v })}
+                  keyboardType="numeric"
+                  suffix="kg"
+                />
+              </View>
+
+              <View style={[styles.fieldWrapper, { flex: 1 }]}>
+                <Text style={styles.fieldLabel}>Height</Text>
+                <FocusInput
+                  placeholder="175"
+                  value={regForm.height_cm}
+                  onChangeText={(v) => setRegForm({ ...regForm, height_cm: v })}
+                  keyboardType="numeric"
+                  suffix="cm"
+                />
+              </View>
+
+              <View style={[styles.fieldWrapper, { flex: 1 }]}>
+                <Text style={styles.fieldLabel}>Age</Text>
+                <FocusInput
+                  placeholder="25"
+                  value={regForm.age}
+                  onChangeText={(v) => setRegForm({ ...regForm, age: v })}
+                  keyboardType="numeric"
+                  suffix="yrs"
+                />
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Submit Button */}
+        <PressableScale
+          style={styles.btnPrimary}
+          onPress={handleSubmit}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color={colors.textOnDark} />
+          ) : (
+            <>
+              <Text style={styles.btnPrimaryText}>{isLogin ? 'Log In' : 'Create Account'}</Text>
+              <Ionicons name="arrow-forward" size={18} color={colors.textOnDark} />
+            </>
+          )}
+        </PressableScale>
+
+        {/* Switch Auth Mode */}
+        <Pressable
+          onPress={() => switchMode(!isLogin)}
+          style={styles.switchAuthBtn}
+        >
+          <Text style={styles.switchAuthText}>
+            {isLogin ? "Don't have an account? " : 'Already have an account? '}
+            <Text style={styles.switchAuthLink}>{isLogin ? 'Create one' : 'Log in'}</Text>
+          </Text>
+        </Pressable>
+      </FadeInView>
     </ScrollView>
   );
 }
@@ -775,21 +831,152 @@ function formatAllergens(allergens?: string[]): string {
     .join(', ');
 }
 
-function StatRow({ label, value }: { label: string; value: string }) {
+/**
+ * TextInput on a muted surface that gains an accent border while focused.
+ * Optional leading icon, trailing node (e.g. eye toggle) and unit suffix.
+ */
+function FocusInput({
+  icon,
+  suffix,
+  trailing,
+  hasError,
+  ref,
+  onFocus,
+  onBlur,
+  ...rest
+}: TextInputProps & {
+  icon?: IconName;
+  suffix?: string;
+  trailing?: React.ReactNode;
+  hasError?: boolean;
+  ref?: React.Ref<TextInput>;
+}) {
+  const [focused, setFocused] = useState(false);
+
   return (
-    <View style={styles.statRow}>
+    <View
+      style={[
+        styles.inputShell,
+        focused && styles.inputShellFocused,
+        hasError && styles.inputShellError,
+      ]}
+    >
+      {icon ? (
+        <Ionicons
+          name={icon}
+          size={18}
+          color={focused ? colors.accent : colors.textTertiary}
+        />
+      ) : null}
+      <TextInput
+        ref={ref}
+        style={styles.inputField}
+        placeholderTextColor={colors.textTertiary}
+        onFocus={(e) => {
+          setFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          onBlur?.(e);
+        }}
+        {...rest}
+      />
+      {suffix ? <Text style={styles.suffixText}>{suffix}</Text> : null}
+      {trailing}
+    </View>
+  );
+}
+
+function ChoiceCard({
+  label,
+  sub,
+  selected,
+  onPress,
+}: {
+  label: string;
+  sub: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.descriptiveChip,
+        selected && styles.descriptiveChipActive,
+        pressed && !selected && { backgroundColor: colors.surfaceMuted },
+      ]}
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.descriptiveChipTitle, selected && styles.descriptiveChipTitleActive]}>
+          {label}
+        </Text>
+        <Text style={styles.descriptiveChipSub}>{sub}</Text>
+      </View>
+      <Ionicons
+        name={selected ? 'radio-button-on' : 'radio-button-off'}
+        size={20}
+        color={selected ? colors.accent : colors.borderStrong}
+      />
+    </Pressable>
+  );
+}
+
+function ExplainerLine({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.tdeeExplainerRow}>
+      <View style={styles.tdeeBullet} />
+      <Text style={styles.tdeeExplainerLine}>
+        <Text style={{ fontFamily: fonts.bodySemiBold, color: colors.textPrimary }}>{title}</Text>{' '}
+        {children}
+      </Text>
+    </View>
+  );
+}
+
+function StatRow({
+  icon,
+  label,
+  value,
+  isLast,
+}: {
+  icon: IconName;
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  return (
+    <View style={[styles.statRow, !isLast && styles.statRowDivider]}>
+      <Ionicons name={icon} size={18} color={colors.textSecondary} style={{ marginTop: 1 }} />
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
     </View>
   );
 }
 
-function TargetItem({ label, value, unit }: { label: string; value: number; unit: string }) {
+function TargetItem({
+  icon,
+  color,
+  label,
+  value,
+  unit,
+}: {
+  icon: IconName;
+  color: string;
+  label: string;
+  value: number;
+  unit: string;
+}) {
   return (
     <View style={styles.targetItem}>
+      <IconBubble name={icon} size={34} color={color} background={colors.surface} />
       <Text style={styles.targetValue}>{value || 0}</Text>
-      <Text style={styles.targetUnit}>{unit}</Text>
-      <Text style={styles.targetLabel}>{label}</Text>
+      <Text style={styles.targetLabel}>
+        {label} <Text style={styles.targetUnit}>{unit}</Text>
+      </Text>
     </View>
   );
 }
@@ -808,27 +995,61 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
   },
+
+  // Header
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  avatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.card,
+  },
+  avatarText: {
+    fontFamily: fonts.display,
+    fontSize: 26,
+    color: colors.textOnDark,
+  },
   title: {
-    fontSize: 32,
+    fontSize: 28,
+    lineHeight: 34,
     fontFamily: fonts.display,
     color: colors.textPrimary,
-    marginTop: spacing.sm,
   },
   email: {
     fontSize: 14,
     fontFamily: fonts.body,
     color: colors.textSecondary,
-    marginBottom: spacing.md,
+  },
+  adminBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+  },
+  adminBadgeText: {
+    fontSize: 12,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.accent,
   },
 
   // Card & Layout
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.md + 4,
     marginBottom: spacing.md,
+    ...shadows.card,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -842,75 +1063,105 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+    marginBottom: spacing.sm + 4,
   },
   editBtn: {
-    fontSize: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.accentSoft,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: radii.pill,
+  },
+  editBtnActive: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  editBtnText: {
+    fontSize: 13,
     fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
-    textDecorationLine: 'underline',
+    color: colors.accent,
   },
 
   // Daily Targets
   targetGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
+    gap: spacing.sm,
   },
   targetItem: {
-    alignItems: 'center',
     flex: 1,
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: radii.button,
+    paddingVertical: spacing.sm + 4,
   },
   targetValue: {
-    fontSize: 22,
+    fontSize: 19,
     fontFamily: fonts.display,
     color: colors.textPrimary,
+    marginTop: 6,
   },
   targetUnit: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: fonts.body,
-    color: colors.textSecondary,
-    marginBottom: 2,
+    color: colors.textTertiary,
   },
   targetLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
   },
   tdeeToggleRow: {
+    flexDirection: 'row',
+    gap: 6,
     marginTop: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   tdeeToggleText: {
     color: colors.textSecondary,
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: fonts.bodyMedium,
   },
   tdeeExplainerBox: {
-    marginTop: spacing.sm,
-    padding: spacing.sm,
+    marginTop: spacing.sm + 4,
+    padding: spacing.md - 2,
     backgroundColor: colors.background,
-    borderRadius: radii.card,
+    borderRadius: radii.button,
+    gap: 8,
+  },
+  tdeeExplainerRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  tdeeBullet: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+    marginTop: 7,
   },
   tdeeExplainerLine: {
+    flex: 1,
     fontSize: 12,
     fontFamily: fonts.body,
     color: colors.textSecondary,
     lineHeight: 18,
-    marginBottom: 4,
   },
 
   // Stat Rows
   statRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    alignItems: 'flex-start',
+    gap: spacing.sm + 2,
+    paddingVertical: 12,
+  },
+  statRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderStrong,
   },
   statLabel: {
+    flex: 1,
     fontSize: 14,
     fontFamily: fonts.body,
     color: colors.textSecondary,
@@ -919,126 +1170,125 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
-    maxWidth: '65%',
+    maxWidth: '58%',
     textAlign: 'right',
   },
 
   // Forms & Inputs
+  fieldRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   fieldWrapper: {
-    marginBottom: spacing.sm + 4,
+    marginBottom: spacing.md - 2,
   },
   fieldLabel: {
     fontSize: 13,
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
+  groupLabel: {
+    marginTop: spacing.sm,
+  },
+  inputShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
     borderRadius: radii.input,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.md - 2,
+  },
+  inputShellFocused: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
+  },
+  inputShellError: {
+    borderColor: colors.error,
+  },
+  inputField: {
+    flex: 1,
+    minWidth: 0, // let the field shrink in narrow 3-column rows instead of pushing the suffix out
+    paddingVertical: Platform.OS === 'ios' ? 13 : 10,
     fontSize: 15,
     fontFamily: fonts.body,
     color: colors.textPrimary,
-    backgroundColor: colors.background,
-  },
-  inputError: {
-    borderColor: colors.error,
   },
   fieldErrorText: {
     fontSize: 12,
     fontFamily: fonts.body,
     color: colors.error,
     marginTop: 4,
-  },
-  inputWithSuffix: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.input,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.md,
-  },
-  suffixInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: 15,
-    fontFamily: fonts.body,
-    color: colors.textPrimary,
+    marginBottom: 2,
   },
   suffixText: {
     fontSize: 13,
     fontFamily: fonts.bodySemiBold,
     color: colors.textSecondary,
-    marginLeft: spacing.xs,
   },
 
-  // Descriptive Chips
+  // Descriptive Choice Cards
   chipStack: {
-    gap: 6,
+    gap: spacing.sm,
     marginBottom: spacing.md,
-    marginTop: 2,
   },
   descriptiveChip: {
-    paddingVertical: 8,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.button,
-    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 11,
+    paddingHorizontal: spacing.md - 2,
+    borderRadius: radii.input,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
   },
   descriptiveChipActive: {
-    borderColor: colors.textPrimary,
-    backgroundColor: colors.textPrimary,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
   },
   descriptiveChipTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
   },
   descriptiveChipTitleActive: {
-    color: '#FFFFFF',
+    color: colors.accent,
   },
   descriptiveChipSub: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: fonts.body,
     color: colors.textSecondary,
     marginTop: 1,
   },
-  descriptiveChipSubActive: {
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
 
-  // Gender Chips
+  // Gender Segmented Control
   genderRow: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.input,
+    padding: 3,
     marginBottom: spacing.md,
-    marginTop: 2,
   },
   genderChip: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: radii.button,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
+    paddingVertical: 9,
+    borderRadius: radii.input - 2,
     alignItems: 'center',
   },
   genderChipActive: {
-    borderColor: colors.textPrimary,
-    backgroundColor: colors.textPrimary,
+    backgroundColor: colors.surface,
+    ...shadows.card,
   },
   genderChipText: {
     fontSize: 13,
     fontFamily: fonts.bodyMedium,
-    color: colors.textPrimary,
+    color: colors.textSecondary,
   },
   genderChipTextActive: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontFamily: fonts.bodySemiBold,
   },
 
@@ -1047,29 +1297,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fonts.body,
     color: colors.textSecondary,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
   allergenChipsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.xs,
+    gap: spacing.sm,
     marginBottom: spacing.md,
-    marginTop: 2,
   },
   allergenChip: {
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 13,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
   },
   allergenChipActive: {
-    borderColor: colors.error,
-    backgroundColor: 'rgba(185, 28, 28, 0.1)',
+    borderColor: 'rgba(198, 40, 40, 0.4)',
+    backgroundColor: colors.errorSoft,
   },
   allergenChipText: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: fonts.bodyMedium,
     color: colors.textPrimary,
   },
@@ -1080,24 +1332,29 @@ const styles = StyleSheet.create({
 
   // Buttons
   btnPrimary: {
-    backgroundColor: colors.textPrimary,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: colors.ink,
     borderRadius: radii.button,
-    paddingVertical: 14,
+    paddingVertical: 15,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: spacing.sm,
+    minHeight: 52,
   },
   btnPrimaryText: {
-    color: '#FFFFFF',
-    fontSize: 15,
+    color: colors.textOnDark,
+    fontSize: 16,
     fontFamily: fonts.bodySemiBold,
   },
   btnLogout: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     borderRadius: radii.button,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingVertical: 14,
+    backgroundColor: colors.errorSoft,
+    paddingVertical: 15,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: spacing.xs,
   },
   btnLogoutText: {
@@ -1108,30 +1365,56 @@ const styles = StyleSheet.create({
 
   // Auth Screen
   authContainer: {
-    padding: spacing.xl,
-    paddingTop: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  authLogo: {
+    width: 60,
+    height: 60,
+    borderRadius: 20,
+    backgroundColor: colors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+    ...shadows.raised,
   },
   authTitle: {
-    fontSize: 28,
+    fontSize: 30,
+    lineHeight: 36,
     fontFamily: fonts.display,
     color: colors.textPrimary,
     marginBottom: spacing.xs,
   },
   authSubtitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: fonts.body,
     color: colors.textSecondary,
     marginBottom: spacing.lg,
-    lineHeight: 20,
+    lineHeight: 21,
   },
-  passwordLabelRow: {
+  segment: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.button,
+    padding: 4,
+    marginBottom: spacing.lg,
   },
-  showHideText: {
-    fontSize: 12,
+  segmentOpt: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: radii.button - 3,
+    alignItems: 'center',
+  },
+  segmentOptActive: {
+    backgroundColor: colors.surface,
+    ...shadows.card,
+  },
+  segmentText: {
+    fontSize: 14,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textSecondary,
+  },
+  segmentTextActive: {
     fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
   },
@@ -1145,30 +1428,11 @@ const styles = StyleSheet.create({
   },
   switchAuthText: {
     fontSize: 14,
-    fontFamily: fonts.bodyMedium,
-    color: colors.textPrimary,
-    textDecorationLine: 'underline',
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
   },
-
-  // Toast
-  toastFloating: {
-    position: 'absolute',
-    bottom: spacing.lg,
-    left: spacing.md,
-    right: spacing.md,
-    backgroundColor: colors.textPrimary,
-    borderRadius: radii.card,
-    paddingVertical: 12,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  toastText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: fonts.bodyMedium,
+  switchAuthLink: {
+    fontFamily: fonts.bodySemiBold,
+    color: colors.accent,
   },
 });

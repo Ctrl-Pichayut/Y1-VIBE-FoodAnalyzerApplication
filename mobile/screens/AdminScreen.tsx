@@ -15,7 +15,10 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors, spacing, radii, fonts } from '../theme/tokens';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, spacing, radii, fonts, shadows } from '../theme/tokens';
+import { IconBubble, PressableScale, Toast } from '../components/ui';
 import {
   getReviewQueue,
   getReviewStats,
@@ -37,6 +40,7 @@ interface ReviewItem {
 type StatusFilter = 'pending' | 'promoted' | 'rejected';
 
 export default function AdminScreen() {
+  const insets = useSafeAreaInsets();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [stats, setStats] = useState<{ pending: number; promoted: number; rejected: number }>({
@@ -183,7 +187,7 @@ export default function AdminScreen() {
     return (
       <>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.textPrimary} />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
         <AppModal state={modal} onClose={() => setModal(null)} />
       </>
@@ -196,10 +200,23 @@ export default function AdminScreen() {
         <FlatList
           data={items}
           keyExtractor={(item) => String(item.id)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
+              progressViewOffset={insets.top}
+            />
+          }
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.3}
-          contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.xxl }}
+          contentContainerStyle={{
+            paddingHorizontal: spacing.md,
+            paddingTop: insets.top + spacing.md,
+            paddingBottom: spacing.xxl,
+          }}
+          showsVerticalScrollIndicator={false}
           ListHeaderComponent={() => (
             <View>
               <Text style={styles.title}>Admin Console</Text>
@@ -208,7 +225,10 @@ export default function AdminScreen() {
               {modelInfo && (
                 <View style={styles.modelCard}>
                   <View style={styles.modelHeaderRow}>
-                    <Text style={styles.modelSectionLabel}>Active Vision Model</Text>
+                    <View style={styles.modelTitleRow}>
+                      <Ionicons name="hardware-chip-outline" size={16} color="rgba(255,255,255,0.75)" />
+                      <Text style={styles.modelSectionLabel}>Active Vision Model</Text>
+                    </View>
                     <View style={styles.modelVersionBadge}>
                       <Text style={styles.modelVersionText}>v{modelInfo.version}</Text>
                     </View>
@@ -269,6 +289,7 @@ export default function AdminScreen() {
           )}
           ListEmptyComponent={() => (
             <View style={styles.empty}>
+              <IconBubble name="checkmark-done-outline" size={64} />
               <Text style={styles.emptyTitle}>No {statusFilter} dishes</Text>
               <Text style={styles.emptyBody}>
                 {statusFilter === 'pending'
@@ -280,11 +301,7 @@ export default function AdminScreen() {
         />
       </View>
       <AppModal state={modal} onClose={() => setModal(null)} />
-      {toast && (
-        <View style={styles.toast}>
-          <Text style={styles.toastText}>{toast}</Text>
-        </View>
-      )}
+      <Toast message={toast} />
     </>
   );
 }
@@ -301,16 +318,15 @@ function StatPill({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <PressableScale
       style={[styles.statPill, active && styles.statPillActive]}
       onPress={onPress}
-      activeOpacity={0.7}
       accessibilityRole="tab"
       accessibilityState={{ selected: !!active }}
     >
       <Text style={[styles.statValue, active && styles.statValueActive]}>{value}</Text>
       <Text style={[styles.statLabel, active && styles.statLabelActive]}>{label}</Text>
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 
@@ -345,7 +361,13 @@ function ReviewCard({
                 : 'Gemini estimate · tap to review'}
             </Text>
           </View>
-          <Text style={styles.chevron}>{expanded ? '−' : '+'}</Text>
+          <View style={styles.chevronWrap}>
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.textSecondary}
+            />
+          </View>
         </View>
       </TouchableOpacity>
 
@@ -415,21 +437,23 @@ function ReviewCard({
 
           <View style={styles.actionRow}>
             {item.status !== 'rejected' && (
-              <TouchableOpacity
+              <PressableScale
                 style={[styles.btn, styles.btnSecondary]}
                 onPress={() => onReject(item)}
               >
+                <Ionicons name="close-circle-outline" size={18} color={colors.error} />
                 <Text style={styles.btnSecondaryText}>Reject</Text>
-              </TouchableOpacity>
+              </PressableScale>
             )}
-            <TouchableOpacity
+            <PressableScale
               style={[styles.btn, styles.btnPrimary]}
               onPress={() => onPromote(item, edited, allergens)}
             >
+              <Ionicons name="checkmark-circle-outline" size={18} color={colors.textOnDark} />
               <Text style={styles.btnPrimaryText}>
                 {item.status === 'promoted' ? 'Save Changes' : 'Promote'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </View>
       )}
@@ -479,7 +503,8 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 32,
+    fontSize: 30,
+    lineHeight: 36,
     fontFamily: fonts.display,
     color: colors.textPrimary,
     marginBottom: spacing.md,
@@ -495,54 +520,61 @@ const styles = StyleSheet.create({
 
   // Model Status Card
   modelCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.ink,
     borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.md + 4,
     marginBottom: spacing.lg,
+    ...shadows.raised,
   },
   modelHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  modelTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   modelSectionLabel: {
     fontSize: 12,
     fontFamily: fonts.bodySemiBold,
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.75)',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   modelVersionBadge: {
-    backgroundColor: colors.textPrimary,
-    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: radii.pill,
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
   modelVersionText: {
-    color: '#FFFFFF',
-    fontSize: 11,
+    color: colors.textOnDark,
+    fontSize: 12,
     fontFamily: fonts.bodySemiBold,
   },
   modelMetaGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: spacing.xs,
+    gap: spacing.sm,
   },
   modelMetaItem: {
+    flex: 1,
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: radii.input,
+    paddingVertical: spacing.sm + 2,
   },
   modelMetaValue: {
     fontSize: 20,
     fontFamily: fonts.display,
-    color: colors.textPrimary,
+    color: colors.textOnDark,
   },
   modelMetaLabel: {
     fontSize: 11,
     fontFamily: fonts.body,
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.65)',
     marginTop: 2,
   },
 
@@ -552,39 +584,52 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
     padding: spacing.md,
     alignItems: 'center',
+    ...shadows.card,
   },
-  statPillActive: { borderColor: colors.textPrimary, borderWidth: 2 },
+  statPillActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   statValue: { fontSize: 24, fontFamily: fonts.display, color: colors.textPrimary },
-  statValueActive: { color: colors.textPrimary },
+  statValueActive: { color: colors.accent },
   statLabel: {
     fontSize: 12,
     fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  statLabelActive: { color: colors.textPrimary, fontFamily: fonts.bodySemiBold },
+  statLabelActive: { color: colors.accent, fontFamily: fonts.bodySemiBold },
 
   // Card
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.md + 2,
     marginBottom: spacing.md,
+    ...shadows.card,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dishName: { fontSize: 18, fontFamily: fonts.display, color: colors.textPrimary },
   tag: { fontSize: 12, fontFamily: fonts.body, color: colors.textSecondary, marginTop: 2 },
-  chevron: { fontSize: 24, fontFamily: fonts.body, color: colors.textSecondary },
+  chevronWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // Collapsed macros
-  macroRow: { flexDirection: 'row', marginTop: spacing.sm },
-  miniMacro: { flex: 1, alignItems: 'center' },
+  macroRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  miniMacro: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: radii.input,
+    paddingVertical: spacing.sm,
+  },
   miniValue: { fontSize: 16, fontFamily: fonts.display, color: colors.textPrimary },
   miniLabel: { fontSize: 11, fontFamily: fonts.body, color: colors.textSecondary, marginTop: 2 },
 
@@ -599,23 +644,21 @@ const styles = StyleSheet.create({
   },
   fieldGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   numberField: { width: '47%' },
-  numberLabel: { fontSize: 12, fontFamily: fonts.body, color: colors.textSecondary, marginBottom: 2 },
+  numberLabel: { fontSize: 12, fontFamily: fonts.body, color: colors.textSecondary, marginBottom: 4 },
   numberInput: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
     borderRadius: radii.input,
-    padding: spacing.sm,
+    paddingHorizontal: spacing.md - 4,
+    paddingVertical: spacing.sm + 2,
     fontSize: 15,
     fontFamily: fonts.body,
     color: colors.textPrimary,
   },
   input: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
     borderRadius: radii.input,
-    padding: spacing.sm,
+    paddingHorizontal: spacing.md - 4,
+    paddingVertical: spacing.sm + 2,
     fontSize: 15,
     fontFamily: fonts.body,
     color: colors.textPrimary,
@@ -623,15 +666,28 @@ const styles = StyleSheet.create({
 
   // Actions
   actionRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  btn: { flex: 1, borderRadius: radii.button, paddingVertical: 14, alignItems: 'center' },
-  btnPrimary: { backgroundColor: colors.textPrimary },
-  btnPrimaryText: { color: '#fff', fontSize: 15, fontFamily: fonts.bodySemiBold },
-  btnSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  btn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    borderRadius: radii.button,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnPrimary: { backgroundColor: colors.ink },
+  btnPrimaryText: { color: colors.textOnDark, fontSize: 15, fontFamily: fonts.bodySemiBold },
+  btnSecondary: { backgroundColor: colors.errorSoft },
   btnSecondaryText: { color: colors.error, fontSize: 15, fontFamily: fonts.bodySemiBold },
 
   // Empty
   empty: { alignItems: 'center', paddingVertical: spacing.xxl, paddingHorizontal: spacing.lg },
-  emptyTitle: { fontSize: 20, fontFamily: fonts.display, color: colors.textPrimary },
+  emptyTitle: {
+    fontSize: 20,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+    marginTop: spacing.md,
+  },
   emptyBody: {
     fontSize: 15,
     fontFamily: fonts.body,
@@ -640,17 +696,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 21,
   },
-
-  // Toast
-  toast: {
-    position: 'absolute',
-    bottom: spacing.lg,
-    left: spacing.md,
-    right: spacing.md,
-    backgroundColor: colors.textPrimary,
-    borderRadius: radii.button,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-  },
-  toastText: { color: '#fff', fontSize: 14, fontFamily: fonts.bodySemiBold, textAlign: 'center' },
 });

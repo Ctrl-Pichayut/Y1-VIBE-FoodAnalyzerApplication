@@ -14,17 +14,20 @@ import {
   Text,
   StyleSheet,
   SectionList,
-  TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { colors, spacing, radii, getHealthColor, fonts } from '../theme/tokens';
+import { colors, spacing, radii, getHealthColor, fonts, shadows } from '../theme/tokens';
 import { getHistory, deleteMeal, isLoggedIn } from '../services/api';
 import AppModal, { ModalState } from '../components/AppModal';
 import DishCorrectionModal from '../components/DishCorrectionModal';
+import { FadeInView, IconBubble, PressableScale, Toast, mealTypeIcon } from '../components/ui';
 
 interface MealSection {
   title: string;
@@ -38,6 +41,7 @@ function formatMealType(mealType?: string): string {
 }
 
 export default function HistoryScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const [meals, setMeals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -246,7 +250,10 @@ export default function HistoryScreen({ navigation }: any) {
     ({ section: { title, totalKcal } }: { section: MealSection }) => (
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <Text style={styles.sectionKcalTotal}>{totalKcal} kcal</Text>
+        <View style={styles.sectionKcalPill}>
+          <Ionicons name="flame-outline" size={12} color={colors.textSecondary} />
+          <Text style={styles.sectionKcalTotal}>{totalKcal} kcal</Text>
+        </View>
       </View>
     ),
     []
@@ -267,28 +274,29 @@ export default function HistoryScreen({ navigation }: any) {
   // Render Empty Component
   const renderEmpty = useMemo(
     () => (
-      <View style={styles.emptyContainer}>
+      <FadeInView style={styles.emptyContainer}>
+        <IconBubble name="journal-outline" size={72} />
         <Text style={styles.emptyTitle}>No meals logged yet</Text>
         <Text style={styles.emptyBody}>
           Scan your first dish or search the food catalog to start tracking your daily nutrition.
         </Text>
         <View style={styles.emptyBtnRow}>
-          <TouchableOpacity
+          <PressableScale
             style={styles.emptyBtn}
             onPress={() => navigation.navigate('ScanTab')}
-            activeOpacity={0.8}
           >
-            <Text style={styles.emptyBtnText}>Scan a Meal</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+            <Ionicons name="camera" size={17} color={colors.textOnDark} />
+            <Text style={styles.emptyBtnText}>Scan a meal</Text>
+          </PressableScale>
+          <PressableScale
             style={styles.emptySecondaryBtn}
             onPress={() => setManualLogOpen(true)}
-            activeOpacity={0.8}
           >
-            <Text style={styles.emptySecondaryBtnText}>Log Manually</Text>
-          </TouchableOpacity>
+            <Ionicons name="search" size={16} color={colors.textPrimary} />
+            <Text style={styles.emptySecondaryBtnText}>Search</Text>
+          </PressableScale>
         </View>
-      </View>
+      </FadeInView>
     ),
     [navigation]
   );
@@ -298,7 +306,7 @@ export default function HistoryScreen({ navigation }: any) {
     () =>
       loadingMore ? (
         <View style={styles.footerLoader}>
-          <ActivityIndicator size="small" color={colors.textPrimary} />
+          <ActivityIndicator size="small" color={colors.accent} />
         </View>
       ) : (
         <View style={{ height: spacing.xxl }} />
@@ -309,18 +317,21 @@ export default function HistoryScreen({ navigation }: any) {
   // --- Logged-out Screen ---
   if (!isUserLoggedIn) {
     return (
-      <View style={styles.loggedOutCenter}>
-        <Text style={styles.loggedOutTitle}>Meal History</Text>
-        <Text style={styles.loggedOutBody}>
-          Log in or create an account to view and manage your saved meals and nutritional logs.
-        </Text>
-        <TouchableOpacity
-          style={styles.loggedOutBtn}
-          onPress={() => navigation.navigate('Profile')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.loggedOutBtnText}>Log In to Profile</Text>
-        </TouchableOpacity>
+      <View style={[styles.loggedOutCenter, { paddingTop: insets.top }]}>
+        <FadeInView style={{ alignItems: 'center' }}>
+          <IconBubble name="time-outline" size={80} />
+          <Text style={styles.loggedOutTitle}>Meal history</Text>
+          <Text style={styles.loggedOutBody}>
+            Log in or create an account to view and manage your saved meals and nutritional logs.
+          </Text>
+          <PressableScale
+            style={styles.loggedOutBtn}
+            onPress={() => navigation.navigate('Profile')}
+          >
+            <Ionicons name="log-in-outline" size={18} color={colors.textOnDark} />
+            <Text style={styles.loggedOutBtnText}>Log in</Text>
+          </PressableScale>
+        </FadeInView>
       </View>
     );
   }
@@ -329,25 +340,27 @@ export default function HistoryScreen({ navigation }: any) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.textPrimary} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Top Action Bar */}
-      <View style={styles.topActionBar}>
-        <Text style={styles.hintBannerText}>
-          Tap a meal to view or edit · Swipe left to delete
-        </Text>
-        <TouchableOpacity
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>History</Text>
+          <Text style={styles.hintBannerText}>Tap to view or edit · swipe left to delete</Text>
+        </View>
+        <PressableScale
           style={styles.manualAddPill}
           onPress={() => setManualLogOpen(true)}
-          activeOpacity={0.7}
+          accessibilityLabel="Log food manually"
         >
-          <Text style={styles.manualAddPillText}>+ Log Food</Text>
-        </TouchableOpacity>
+          <Ionicons name="add" size={18} color={colors.textOnDark} />
+          <Text style={styles.manualAddPillText}>Log food</Text>
+        </PressableScale>
       </View>
 
       <SectionList
@@ -357,24 +370,28 @@ export default function HistoryScreen({ navigation }: any) {
         renderSectionHeader={renderSectionHeader}
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
         onEndReached={onLoadMore}
         onEndReachedThreshold={0.4}
         contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.xxl }}
         stickySectionHeadersEnabled={false}
+        showsVerticalScrollIndicator={false}
       />
 
       {/* Floating Undo Toast */}
-      {toastMessage && (
-        <View style={styles.toastFloating}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-          {undoSeconds > 0 && (
-            <TouchableOpacity style={styles.toastUndoBtn} onPress={handleUndoDelete}>
-              <Text style={styles.toastUndoText}>Undo ({undoSeconds}s)</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      <Toast
+        message={toastMessage}
+        icon={undoSeconds > 0 ? 'trash-outline' : 'checkmark-circle'}
+        actionLabel={undoSeconds > 0 ? `Undo (${undoSeconds}s)` : undefined}
+        onAction={undoSeconds > 0 ? handleUndoDelete : undefined}
+      />
 
       <DishCorrectionModal
         visible={manualLogOpen}
@@ -409,33 +426,40 @@ function MealCard({
   const totalCal = meal.totals_json?.calories ? Math.round(meal.totals_json.calories) : 0;
 
   const renderRightActions = () => (
-    <TouchableOpacity style={styles.deleteAction} onPress={onDelete} activeOpacity={0.8}>
+    <Pressable
+      style={({ pressed }) => [styles.deleteAction, pressed && { opacity: 0.85 }]}
+      onPress={onDelete}
+      accessibilityRole="button"
+      accessibilityLabel="Delete meal"
+    >
+      <Ionicons name="trash-outline" size={22} color={colors.textOnDark} />
       <Text style={styles.deleteActionText}>Delete</Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 
   return (
-    <Swipeable renderRightActions={renderRightActions}>
-      <TouchableOpacity
+    <Swipeable renderRightActions={renderRightActions} overshootRight={false} friction={1.6}>
+      <PressableScale
         style={styles.card}
         onPress={onOpen}
         onLongPress={onDelete}
-        activeOpacity={0.7}
+        scaleTo={0.98}
       >
         <View style={styles.mealHeader}>
-          <View style={styles.mealTimeRow}>
+          <IconBubble name={mealTypeIcon(meal.meal_type)} size={40} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.mealType}>{formatMealType(meal.meal_type)}</Text>
             <Text style={styles.mealTime}>{time}</Text>
-            {meal.meal_type && (
-              <View style={styles.mealTypeBadge}>
-                <Text style={styles.mealTypeBadgeText}>{formatMealType(meal.meal_type)}</Text>
-              </View>
-            )}
           </View>
-          <Text style={styles.mealCal}>{totalCal} kcal</Text>
+          <Text style={styles.mealCal}>
+            {totalCal}
+            <Text style={styles.mealCalUnit}> kcal</Text>
+          </Text>
         </View>
 
         {foods.slice(0, 3).map((f: any, i: number) => (
           <View key={i} style={styles.mealFoodRow}>
+            <View style={[styles.mealFoodDot, { backgroundColor: getHealthColor(f.health_label) }]} />
             <Text style={styles.mealFoodName} numberOfLines={1}>
               {f.name}
             </Text>
@@ -448,7 +472,7 @@ function MealCard({
         {foods.length > 3 && (
           <Text style={styles.moreText}>+{foods.length - 3} more dishes</Text>
         )}
-      </TouchableOpacity>
+      </PressableScale>
     </Swipeable>
   );
 }
@@ -467,101 +491,116 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
   },
-  topActionBar: {
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.background,
+  },
+  headerTitle: {
+    fontSize: 30,
+    lineHeight: 36,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
   },
   hintBannerText: {
     fontSize: 12,
     fontFamily: fonts.body,
     color: colors.textSecondary,
-    flex: 1,
+    marginTop: 2,
   },
   manualAddPill: {
-    backgroundColor: colors.textPrimary,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.ink,
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 16,
+    borderRadius: radii.pill,
     marginLeft: spacing.sm,
   },
   manualAddPillText: {
-    color: '#FFFFFF',
-    fontSize: 12,
+    color: colors.textOnDark,
+    fontSize: 14,
     fontFamily: fonts.bodySemiBold,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
+    alignItems: 'center',
     marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
     paddingHorizontal: 2,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontFamily: fonts.display,
     color: colors.textPrimary,
   },
+  sectionKcalPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+  },
   sectionKcalTotal: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: fonts.bodySemiBold,
     color: colors.textSecondary,
   },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
     padding: spacing.md,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.sm + 4,
+    ...shadows.card,
   },
   mealHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    gap: spacing.sm + 4,
+    marginBottom: spacing.sm,
   },
-  mealTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  mealTime: {
-    fontSize: 14,
+  mealType: {
+    fontSize: 15,
     fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
   },
-  mealTypeBadge: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  mealTypeBadgeText: {
-    fontSize: 10,
-    fontFamily: fonts.bodySemiBold,
+  mealTime: {
+    fontSize: 12,
+    fontFamily: fonts.body,
     color: colors.textSecondary,
-    textTransform: 'uppercase',
+    marginTop: 1,
   },
   mealCal: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: fonts.display,
     color: colors.textPrimary,
   },
+  mealCalUnit: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+  },
   mealFoodRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 5,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 7,
+    paddingHorizontal: spacing.sm + 2,
+    marginTop: 4,
+    backgroundColor: colors.background,
+    borderRadius: radii.sm + 2,
+  },
+  mealFoodDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   mealFoodName: {
     fontSize: 14,
@@ -570,29 +609,31 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   mealFoodScore: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: fonts.display,
     marginLeft: spacing.sm,
   },
   moreText: {
     fontSize: 12,
-    fontFamily: fonts.body,
+    fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
-    marginTop: 4,
+    marginTop: 6,
+    marginLeft: 2,
   },
   deleteAction: {
     backgroundColor: colors.limit,
     justifyContent: 'center',
     alignItems: 'center',
-    width: 80,
-    marginBottom: spacing.sm,
+    gap: 4,
+    width: 88,
+    marginBottom: spacing.sm + 4,
     borderRadius: radii.card,
-    marginLeft: spacing.xs,
+    marginLeft: spacing.sm,
   },
   deleteActionText: {
-    color: '#FFFFFF',
+    color: colors.textOnDark,
     fontFamily: fonts.bodySemiBold,
-    fontSize: 14,
+    fontSize: 12,
   },
   footerLoader: {
     paddingVertical: spacing.md,
@@ -603,12 +644,13 @@ const styles = StyleSheet.create({
   emptyContainer: {
     alignItems: 'center',
     paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
   },
   emptyTitle: {
     fontSize: 20,
     fontFamily: fonts.display,
     color: colors.textPrimary,
+    marginTop: spacing.lg,
     marginBottom: spacing.xs,
   },
   emptyBody: {
@@ -624,22 +666,28 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   emptyBtn: {
-    backgroundColor: colors.textPrimary,
-    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.ink,
+    paddingVertical: 13,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.button,
   },
   emptyBtnText: {
-    color: '#FFFFFF',
+    color: colors.textOnDark,
     fontFamily: fonts.bodySemiBold,
     fontSize: 14,
   },
   emptySecondaryBtn: {
-    borderWidth: 1,
-    borderColor: colors.textPrimary,
-    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    paddingVertical: 13,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.button,
+    ...shadows.card,
   },
   emptySecondaryBtnText: {
     color: colors.textPrimary,
@@ -659,6 +707,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: fonts.display,
     color: colors.textPrimary,
+    marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
   loggedOutBody: {
@@ -668,51 +717,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: spacing.xl,
+    maxWidth: 320,
   },
   loggedOutBtn: {
-    backgroundColor: colors.textPrimary,
-    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.ink,
+    paddingVertical: 15,
     paddingHorizontal: spacing.xl,
     borderRadius: radii.button,
   },
   loggedOutBtnText: {
-    color: '#FFFFFF',
+    color: colors.textOnDark,
     fontFamily: fonts.bodySemiBold,
     fontSize: 15,
-  },
-
-  // Floating Toast
-  toastFloating: {
-    position: 'absolute',
-    bottom: spacing.lg,
-    left: spacing.md,
-    right: spacing.md,
-    backgroundColor: colors.textPrimary,
-    borderRadius: radii.card,
-    paddingVertical: 12,
-    paddingHorizontal: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  toastText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: fonts.bodyMedium,
-  },
-  toastUndoBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: radii.button,
-  },
-  toastUndoText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontFamily: fonts.bodySemiBold,
   },
 });

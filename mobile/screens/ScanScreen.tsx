@@ -9,34 +9,39 @@
  *  - Smart permission handling (Allow Camera vs Open Settings).
  *  - Haptics on shutter impact and analysis success.
  *  - Friendly error handling with retry confirm dialog.
+ *  - Full-bleed camera with corner-bracket frame and animated scan line while analyzing.
  */
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
+  View, Text, StyleSheet,
   ActivityIndicator, Image, LayoutChangeEvent,
-  Linking,
+  Linking, Animated, Easing,
 } from 'react-native';
 import { CameraView, useCameraPermissions, FlashMode } from 'expo-camera';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
-import { colors, spacing, radii, fonts } from '../theme/tokens';
+import { colors, spacing, radii, fonts, shadows } from '../theme/tokens';
 import { analyzeImage } from '../services/api';
 import AppModal, { ModalState } from '../components/AppModal';
+import { FadeInView, IconBubble, IconName, PressableScale } from '../components/ui';
 
 const SCAN_FRAME_SIZE = 280;
 const MAX_IMAGE_DIMENSION = 1024;
+const PREVIEW_SIZE = 200;
 
 type AnalysisStage = 'upload' | 'detecting' | 'nutrition';
 
 interface StepItemProps {
   label: string;
+  icon: IconName;
   status: 'done' | 'active' | 'pending';
 }
 
-function ProgressStep({ label, status }: StepItemProps) {
+function ProgressStep({ label, icon, status }: StepItemProps) {
   return (
     <View style={styles.stepRow}>
       <View
@@ -47,11 +52,11 @@ function ProgressStep({ label, status }: StepItemProps) {
         ]}
       >
         {status === 'done' ? (
-          <Text style={styles.stepCheckmark}>✓</Text>
+          <Ionicons name="checkmark" size={16} color={colors.textOnDark} />
         ) : status === 'active' ? (
-          <ActivityIndicator size="small" color={colors.textPrimary} />
+          <ActivityIndicator size="small" color={colors.accent} />
         ) : (
-          <View style={styles.stepDotPending} />
+          <Ionicons name={icon} size={15} color={colors.textTertiary} />
         )}
       </View>
       <Text
@@ -64,6 +69,68 @@ function ProgressStep({ label, status }: StepItemProps) {
         {label}
       </Text>
     </View>
+  );
+}
+
+/** Four L-shaped corners that gently "breathe" to invite framing the plate. */
+function ScanFrame({ style }: { style: any }) {
+  const breathe = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 0, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [breathe]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.scanFrame,
+        style,
+        { transform: [{ scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] }) }] },
+      ]}
+    >
+      <View style={[styles.corner, styles.cornerTL]} />
+      <View style={[styles.corner, styles.cornerTR]} />
+      <View style={[styles.corner, styles.cornerBL]} />
+      <View style={[styles.corner, styles.cornerBR]} />
+    </Animated.View>
+  );
+}
+
+/** Light sweep that moves over the preview image while analysis runs. */
+function ScanLine() {
+  const sweep = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sweep, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(sweep, { toValue: 0, duration: 1300, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [sweep]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.scanLine,
+        {
+          transform: [
+            { translateY: sweep.interpolate({ inputRange: [0, 1], outputRange: [0, PREVIEW_SIZE - 3] }) },
+          ],
+        },
+      ]}
+    />
   );
 }
 
@@ -100,6 +167,12 @@ async function optimizeImage(
     return uri;
   }
 }
+
+const FLASH_ICONS: Record<string, IconName> = {
+  off: 'flash-off',
+  on: 'flash',
+  auto: 'flash-outline',
+};
 
 export default function ScanScreen({ navigation }: any) {
   const isFocused = useIsFocused();
@@ -152,7 +225,7 @@ export default function ScanScreen({ navigation }: any) {
   const scanFrameStyle = cameraLayout.width > 0 && cameraLayout.height > 0
     ? {
         left: (cameraLayout.width - SCAN_FRAME_SIZE) / 2,
-        top: (cameraLayout.height - SCAN_FRAME_SIZE) / 2,
+        top: (cameraLayout.height - SCAN_FRAME_SIZE) / 2 - spacing.xl,
       }
     : null;
 
@@ -288,70 +361,84 @@ export default function ScanScreen({ navigation }: any) {
   if (!permission) {
     content = (
       <View style={styles.center}>
-        <ActivityIndicator color={colors.textPrimary} />
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   } else if (!permission.granted) {
     const canAskAgain = permission.canAskAgain;
     content = (
       <View style={styles.center}>
-        <Text style={styles.permTitle}>Camera Access</Text>
-        <Text style={styles.permBody}>
-          Grant camera permission to scan food items for nutritional analysis.
-        </Text>
-        <TouchableOpacity
-          style={styles.btnPrimary}
-          onPress={canAskAgain ? requestPermission : () => Linking.openSettings()}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.btnPrimaryText}>
-            {canAskAgain ? 'Allow Camera' : 'Open Settings'}
+        <FadeInView style={{ alignItems: 'center' }}>
+          <IconBubble name="camera" size={84} />
+          <Text style={styles.permTitle}>Camera access</Text>
+          <Text style={styles.permBody}>
+            Allow camera access to scan your food and get an instant nutrition breakdown.
           </Text>
-        </TouchableOpacity>
+          <PressableScale
+            style={styles.btnPrimary}
+            onPress={canAskAgain ? requestPermission : () => Linking.openSettings()}
+          >
+            <Ionicons
+              name={canAskAgain ? 'camera-outline' : 'settings-outline'}
+              size={18}
+              color={colors.textOnDark}
+            />
+            <Text style={styles.btnPrimaryText}>
+              {canAskAgain ? 'Allow Camera' : 'Open Settings'}
+            </Text>
+          </PressableScale>
+          <PressableScale style={styles.permGalleryBtn} onPress={handlePickImage}>
+            <Text style={styles.permGalleryText}>Choose from gallery instead</Text>
+          </PressableScale>
+        </FadeInView>
       </View>
     );
   } else if (analyzing && preview) {
     content = (
       <View style={styles.analyzingContainer}>
-        <View style={styles.previewWrapper}>
-          <Image source={{ uri: preview }} style={styles.previewImage} />
-          <View style={styles.previewOverlay} />
-        </View>
+        <FadeInView style={{ alignItems: 'center', width: '100%' }}>
+          <View style={styles.previewWrapper}>
+            <Image source={{ uri: preview }} style={styles.previewImage} />
+            <View style={styles.previewOverlay} />
+            <ScanLine />
+          </View>
 
-        <Text style={styles.analyzingHeading}>Analyzing Food</Text>
+          <Text style={styles.analyzingHeading}>Analyzing your food</Text>
+          <Text style={styles.analyzingSub}>This usually takes a few seconds</Text>
 
-        <View style={styles.stepList}>
-          <ProgressStep
-            label={
-              uploadProgress < 100
-                ? `Uploading photo (${uploadProgress}%)`
-                : 'Photo uploaded'
-            }
-            status={analysisStage === 'upload' ? 'active' : 'done'}
-          />
-          <ProgressStep
-            label="Detecting dishes"
-            status={
-              analysisStage === 'upload'
-                ? 'pending'
-                : analysisStage === 'detecting'
-                ? 'active'
-                : 'done'
-            }
-          />
-          <ProgressStep
-            label="Looking up nutrition"
-            status={analysisStage === 'nutrition' ? 'active' : 'pending'}
-          />
-        </View>
+          <View style={styles.stepList}>
+            <ProgressStep
+              icon="cloud-upload-outline"
+              label={
+                uploadProgress < 100
+                  ? `Uploading photo (${uploadProgress}%)`
+                  : 'Photo uploaded'
+              }
+              status={analysisStage === 'upload' ? 'active' : 'done'}
+            />
+            <ProgressStep
+              icon="scan-outline"
+              label="Detecting dishes"
+              status={
+                analysisStage === 'upload'
+                  ? 'pending'
+                  : analysisStage === 'detecting'
+                  ? 'active'
+                  : 'done'
+              }
+            />
+            <ProgressStep
+              icon="nutrition-outline"
+              label="Looking up nutrition"
+              status={analysisStage === 'nutrition' ? 'active' : 'pending'}
+            />
+          </View>
 
-        <TouchableOpacity
-          style={styles.cancelBtn}
-          onPress={handleCancel}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.cancelBtnText}>Cancel</Text>
-        </TouchableOpacity>
+          <PressableScale style={styles.cancelBtn} onPress={handleCancel}>
+            <Ionicons name="close" size={18} color={colors.textPrimary} />
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </PressableScale>
+        </FadeInView>
       </View>
     );
   } else {
@@ -368,66 +455,62 @@ export default function ScanScreen({ navigation }: any) {
             />
           )}
 
-          {scanFrameStyle && (
-            <View
-              style={[styles.scanFrame, scanFrameStyle]}
-              pointerEvents="none"
-            />
-          )}
+          {scanFrameStyle && <ScanFrame style={scanFrameStyle} />}
 
-          <View style={styles.topBar}>
-            <TouchableOpacity
-              style={styles.flashBtn}
+          <View style={[styles.topBar, { top: insets.top + spacing.sm }]}>
+            <View style={styles.titlePill}>
+              <Ionicons name="scan" size={15} color={colors.textOnDark} />
+              <Text style={styles.titlePillText}>Scan food</Text>
+            </View>
+            <PressableScale
+              style={[styles.flashBtn, flash !== 'off' && styles.flashBtnActive]}
               onPress={toggleFlash}
-              activeOpacity={0.7}
+              scaleTo={0.9}
               accessibilityRole="button"
               accessibilityLabel={`Camera flash mode: currently ${flash}`}
             >
-              <Text style={styles.flashBtnText}>
-                {`Flash: ${flash.charAt(0).toUpperCase() + flash.slice(1)}`}
+              <Ionicons
+                name={FLASH_ICONS[flash] ?? 'flash-off'}
+                size={18}
+                color={flash !== 'off' ? colors.ink : colors.textOnDark}
+              />
+              <Text style={[styles.flashBtnText, flash !== 'off' && { color: colors.ink }]}>
+                {flash.charAt(0).toUpperCase() + flash.slice(1)}
               </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={[
-          styles.bottomSection,
-          { paddingBottom: insets.bottom > 0 ? insets.bottom : spacing.lg }
-        ]}>
-          <View style={styles.hintContainer}>
-            <Text style={styles.hintText}>Fit the whole plate inside the frame</Text>
+            </PressableScale>
           </View>
 
-          <View style={styles.controls}>
-            <TouchableOpacity
-              style={styles.btnSecondary}
-              onPress={handlePickImage}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Choose food image from gallery"
-            >
-              <Text style={styles.btnSecondaryText} numberOfLines={1}>Gallery</Text>
-            </TouchableOpacity>
+          <View style={styles.bottomSection}>
+            <View style={styles.hintContainer}>
+              <Ionicons name="restaurant-outline" size={14} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.hintText}>Fit the whole plate inside the frame</Text>
+            </View>
 
-            <TouchableOpacity
-              style={styles.captureBtn}
-              onPress={handleCapture}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Capture food photo"
-            >
-              <View style={styles.captureBtnInner} />
-            </TouchableOpacity>
+            <View style={styles.controls}>
+              <ControlButton
+                icon="images-outline"
+                label="Gallery"
+                onPress={handlePickImage}
+                accessibilityLabel="Choose food image from gallery"
+              />
 
-            <TouchableOpacity
-              style={styles.btnSecondary}
-              onPress={toggleCameraFacing}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Flip camera to front or back"
-            >
-              <Text style={styles.btnSecondaryText} numberOfLines={1}>Flip</Text>
-            </TouchableOpacity>
+              <PressableScale
+                style={styles.captureBtn}
+                onPress={handleCapture}
+                scaleTo={0.88}
+                accessibilityRole="button"
+                accessibilityLabel="Capture food photo"
+              >
+                <View style={styles.captureBtnInner} />
+              </PressableScale>
+
+              <ControlButton
+                icon="camera-reverse-outline"
+                label="Flip"
+                onPress={toggleCameraFacing}
+                accessibilityLabel="Flip camera to front or back"
+              />
+            </View>
           </View>
         </View>
       </View>
@@ -441,6 +524,36 @@ export default function ScanScreen({ navigation }: any) {
     </>
   );
 }
+
+function ControlButton({
+  icon,
+  label,
+  onPress,
+  accessibilityLabel,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  return (
+    <View style={styles.controlCol}>
+      <PressableScale
+        style={styles.controlBtn}
+        onPress={onPress}
+        scaleTo={0.9}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+      >
+        <Ionicons name={icon} size={24} color={colors.textOnDark} />
+      </PressableScale>
+      <Text style={styles.controlLabel}>{label}</Text>
+    </View>
+  );
+}
+
+const CORNER = 34;
+const CORNER_W = 4;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
@@ -457,112 +570,185 @@ const styles = StyleSheet.create({
   },
   topBar: {
     position: 'absolute',
-    top: spacing.md,
+    left: spacing.md,
     right: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     zIndex: 10,
   },
+  titlePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: radii.pill,
+  },
+  titlePillText: {
+    color: colors.textOnDark,
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 14,
+  },
   flashBtn: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    paddingVertical: 7,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.button,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: radii.pill,
+  },
+  flashBtnActive: {
+    backgroundColor: '#FFE58A',
   },
   flashBtnText: {
-    color: '#FFFFFF',
-    fontFamily: fonts.bodyMedium,
+    color: colors.textOnDark,
+    fontFamily: fonts.bodySemiBold,
     fontSize: 13,
   },
   scanFrame: {
     position: 'absolute',
     width: SCAN_FRAME_SIZE,
     height: SCAN_FRAME_SIZE,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.55)',
-    borderRadius: radii.card,
+  },
+  corner: {
+    position: 'absolute',
+    width: CORNER,
+    height: CORNER,
+    borderColor: '#FFFFFF',
+  },
+  cornerTL: {
+    top: 0,
+    left: 0,
+    borderTopWidth: CORNER_W,
+    borderLeftWidth: CORNER_W,
+    borderTopLeftRadius: 22,
+  },
+  cornerTR: {
+    top: 0,
+    right: 0,
+    borderTopWidth: CORNER_W,
+    borderRightWidth: CORNER_W,
+    borderTopRightRadius: 22,
+  },
+  cornerBL: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: CORNER_W,
+    borderLeftWidth: CORNER_W,
+    borderBottomLeftRadius: 22,
+  },
+  cornerBR: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: CORNER_W,
+    borderRightWidth: CORNER_W,
+    borderBottomRightRadius: 22,
   },
   bottomSection: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    paddingBottom: spacing.lg,
   },
   hintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     alignSelf: 'center',
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 16,
+    marginBottom: spacing.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: radii.pill,
   },
   hintText: {
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontFamily: fonts.body,
+    color: 'rgba(255, 255, 255, 0.92)',
+    fontFamily: fonts.bodyMedium,
     fontSize: 13,
   },
   controls: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    paddingHorizontal: spacing.lg,
+  },
+  controlCol: {
+    alignItems: 'center',
+    width: 72,
+  },
+  controlBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  controlLabel: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    marginTop: 6,
   },
   captureBtn: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     borderWidth: 4,
     borderColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 18,
   },
   captureBtnInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: '#FFFFFF',
   },
   btnPrimary: {
-    backgroundColor: colors.textPrimary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.ink,
     borderRadius: radii.button,
-    paddingVertical: 14,
+    paddingVertical: 15,
     paddingHorizontal: spacing.xl,
     marginTop: spacing.lg,
   },
   btnPrimaryText: {
-    color: '#FFFFFF',
+    color: colors.textOnDark,
     fontFamily: fonts.bodySemiBold,
     fontSize: 16,
-  },
-  btnSecondary: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: radii.button,
-    paddingVertical: 10,
-    paddingHorizontal: spacing.sm,
-    minWidth: 86,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnSecondaryText: {
-    color: '#FFFFFF',
-    fontFamily: fonts.bodyMedium,
-    fontSize: 14,
-    textAlign: 'center',
   },
   permTitle: {
     fontSize: 24,
     fontFamily: fonts.display,
     color: colors.textPrimary,
+    marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
   permBody: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: fonts.body,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
+    maxWidth: 300,
+  },
+  permGalleryBtn: {
+    marginTop: spacing.md,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+  },
+  permGalleryText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 14,
+    color: colors.accent,
   },
 
   // Analyzing state
@@ -574,14 +760,14 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   previewWrapper: {
-    width: 160,
-    height: 160,
-    borderRadius: radii.card,
+    width: PREVIEW_SIZE,
+    height: PREVIEW_SIZE,
+    borderRadius: 28,
     overflow: 'hidden',
     position: 'relative',
     marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    ...shadows.raised,
   },
   previewImage: {
     width: '100%',
@@ -589,58 +775,61 @@ const styles = StyleSheet.create({
   },
   previewOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    backgroundColor: 'rgba(22, 38, 28, 0.25)',
+  },
+  scanLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 3,
+    backgroundColor: '#B9F0B9',
+    shadowColor: '#B9F0B9',
+    shadowOpacity: 0.9,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
   },
   analyzingHeading: {
     fontFamily: fonts.display,
     fontSize: 22,
     color: colors.textPrimary,
+  },
+  analyzingSub: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 4,
     marginBottom: spacing.lg,
   },
   stepList: {
     width: '100%',
-    maxWidth: 290,
+    maxWidth: 300,
     backgroundColor: colors.surface,
     borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     marginBottom: spacing.xl,
+    ...shadows.card,
   },
   stepRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: spacing.xs + 2,
+    marginVertical: spacing.xs + 3,
   },
   stepIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
   stepIconWrapDone: {
-    borderColor: colors.textPrimary,
-    backgroundColor: colors.textPrimary,
+    backgroundColor: colors.accent,
   },
   stepIconWrapActive: {
-    borderColor: colors.textPrimary,
-    backgroundColor: colors.surface,
-  },
-  stepCheckmark: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontFamily: fonts.bodySemiBold,
-  },
-  stepDotPending: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.border,
+    backgroundColor: colors.accentSoft,
   },
   stepLabel: {
     fontFamily: fonts.body,
@@ -652,21 +841,22 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   stepLabelPending: {
-    color: colors.textSecondary,
-    opacity: 0.6,
+    color: colors.textTertiary,
   },
   cancelBtn: {
+    flexDirection: 'row',
+    gap: 6,
     paddingVertical: 12,
     paddingHorizontal: spacing.xl,
-    borderRadius: radii.button,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: radii.pill,
     backgroundColor: colors.surface,
     alignItems: 'center',
+    justifyContent: 'center',
     minWidth: 140,
+    ...shadows.card,
   },
   cancelBtnText: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.bodySemiBold,
     fontSize: 15,
     color: colors.textPrimary,
   },

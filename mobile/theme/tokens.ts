@@ -1,20 +1,40 @@
 /**
- * Design tokens — minimalist UI system per spec.
- * No icons. No gradients. No shadows. Bold numbers as visual hierarchy.
+ * Design tokens — soft, calm UI system.
+ * Warm off-white canvas, white surfaces lifted by soft shadows (not hard
+ * borders), generous radii, and bold Space Grotesk numbers as hierarchy.
+ * Icons come from Ionicons (@expo/vector-icons).
  */
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 
 export const colors = {
-  background: '#FAFAF9',
+  background: '#F5F4EF',
   surface: '#FFFFFF',
-  textPrimary: '#0D0D0D',
-  textSecondary: '#6B6B6B',
+  surfaceMuted: '#F0EFE9',
+  textPrimary: '#121714',
+  textSecondary: '#6A6F6B',
+  textTertiary: '#A0A49F',
+  textOnDark: '#FFFFFF',
+  ink: '#16261C', // deep green-black for hero / primary surfaces
   accent: '#2C5F2E',
-  border: '#EBEBEB',
+  accentBright: '#3E8E43',
+  accentSoft: '#E5EFE2',
+  border: '#E9E7E0',
+  borderStrong: '#D9D7CF',
   error: '#C62828',
+  errorSoft: '#FBEAEA',
   excellent: '#2C5F2E',
-  moderate: '#E8A317',
+  moderate: '#D9940F',
+  moderateSoft: '#FCF1DA',
   limit: '#C62828',
+  limitSoft: '#FBEAEA',
+  overlay: 'rgba(10, 16, 12, 0.45)',
+};
+
+/** Distinct, non-judgemental colors for macro breakdowns. */
+export const macroColors = {
+  protein: '#2C5F2E',
+  carbs: '#D9940F',
+  fat: '#D0613A',
 };
 
 export const fonts = {
@@ -102,9 +122,44 @@ export const spacing = {
 };
 
 export const radii = {
-  card: 12,
-  button: 8,
-  input: 8,
+  sm: 8,
+  card: 20,
+  button: 14,
+  input: 12,
+  pill: 999,
+};
+
+/**
+ * Soft elevation. iOS uses a tinted, diffuse shadow; Android uses elevation.
+ */
+export const shadows = {
+  card: Platform.select({
+    ios: {
+      shadowColor: '#1B2A20',
+      shadowOpacity: 0.06,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    default: { elevation: 2, shadowColor: '#1B2A20' },
+  }) as object,
+  raised: Platform.select({
+    ios: {
+      shadowColor: '#1B2A20',
+      shadowOpacity: 0.14,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 8 },
+    },
+    default: { elevation: 8, shadowColor: '#1B2A20' },
+  }) as object,
+  bar: Platform.select({
+    ios: {
+      shadowColor: '#1B2A20',
+      shadowOpacity: 0.08,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: -4 },
+    },
+    default: { elevation: 12, shadowColor: '#1B2A20' },
+  }) as object,
 };
 
 export function getHealthColor(label: string): string {
@@ -116,6 +171,16 @@ export function getHealthColor(label: string): string {
   }
 }
 
+/** Pale background tint matching getHealthColor(). */
+export function getHealthSoftColor(label: string): string {
+  switch (label) {
+    case 'Excellent': return colors.accentSoft;
+    case 'Moderate': return colors.moderateSoft;
+    case 'Limit': return colors.limitSoft;
+    default: return colors.surfaceMuted;
+  }
+}
+
 export const globalStyles = StyleSheet.create({
   container: {
     flex: 1,
@@ -124,20 +189,22 @@ export const globalStyles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md,
+    ...shadows.card,
   },
   buttonPrimary: {
-    backgroundColor: colors.textPrimary,
+    backgroundColor: colors.ink,
     borderRadius: radii.button,
-    paddingVertical: 14,
+    paddingVertical: 15,
     paddingHorizontal: spacing.lg,
     alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    flexDirection: 'row' as const,
+    gap: spacing.sm,
   },
   buttonPrimaryText: {
-    color: colors.surface,
+    color: colors.textOnDark,
     fontFamily: fonts.bodySemiBold,
     fontSize: 16,
   },
@@ -145,10 +212,13 @@ export const globalStyles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radii.button,
     borderWidth: 1,
-    borderColor: colors.textPrimary,
-    paddingVertical: 14,
+    borderColor: colors.borderStrong,
+    paddingVertical: 15,
     paddingHorizontal: spacing.lg,
     alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    flexDirection: 'row' as const,
+    gap: spacing.sm,
   },
   buttonSecondaryText: {
     color: colors.textPrimary,
@@ -156,9 +226,9 @@ export const globalStyles = StyleSheet.create({
     fontSize: 16,
   },
   input: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
     borderRadius: radii.input,
     padding: spacing.md,
     fontSize: 16,
@@ -168,10 +238,10 @@ export const globalStyles = StyleSheet.create({
   },
   sectionTitle: {
     fontFamily: fonts.bodySemiBold,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     marginBottom: spacing.sm,
   },
 });

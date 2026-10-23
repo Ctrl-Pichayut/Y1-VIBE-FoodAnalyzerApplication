@@ -1,5 +1,5 @@
 /**
- * DishCorrectionModal — Reusable searchable food catalog modal.
+ * DishCorrectionModal — Reusable searchable food catalog bottom sheet.
  * Used for:
  *   1. Replacing a misidentified dish in ResultScreen ("Wrong dish?")
  *   2. Adding another dish to a meal in ResultScreen ("+ Add Dish")
@@ -11,14 +11,25 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   TextInput,
   Modal,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing, radii, getHealthColor, fonts } from '../theme/tokens';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  colors,
+  spacing,
+  radii,
+  getHealthColor,
+  getHealthSoftColor,
+  fonts,
+} from '../theme/tokens';
 import * as api from '../services/api';
+import { PressableScale } from './ui';
 
 let cachedFoodsDb: any[] | null = null;
 
@@ -110,9 +121,23 @@ export default function DishCorrectionModal({
       : 'Search 100+ verified dishes');
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Tap outside the sheet to dismiss */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+
         <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+          <View style={styles.grabber} />
+
           {/* Header */}
           <View style={styles.modalHeader}>
             <View style={{ flex: 1, marginRight: spacing.sm }}>
@@ -121,75 +146,102 @@ export default function DishCorrectionModal({
                 {resolvedSubtitle}
               </Text>
             </View>
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
-              <Text style={styles.modalCloseText}>Done</Text>
-            </TouchableOpacity>
+            <PressableScale
+              style={styles.modalCloseBtn}
+              onPress={onClose}
+              scaleTo={0.9}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </PressableScale>
           </View>
 
           {/* Search Box */}
           <View style={styles.searchBox}>
+            <Ionicons name="search" size={18} color={colors.textSecondary} />
             <TextInput
               style={styles.searchInput}
               placeholder="Search dishes (e.g. Pad Thai, Som Tam)..."
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.textTertiary}
               value={search}
               onChangeText={setSearch}
               autoCapitalize="none"
               autoCorrect={false}
             />
             {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch('')}>
-                <Text style={styles.searchClearText}>Clear</Text>
-              </TouchableOpacity>
+              <Pressable
+                onPress={() => setSearch('')}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+              >
+                <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+              </Pressable>
             )}
           </View>
 
           {/* Loading Indicator or List */}
           {loading || selecting ? (
             <View style={styles.modalCenter}>
-              <ActivityIndicator color={colors.textPrimary} />
+              <ActivityIndicator color={colors.accent} />
               <Text style={styles.modalLoadingText}>
                 {selecting ? 'Loading dish nutrition...' : 'Loading food catalog...'}
               </Text>
             </View>
           ) : (
-            <ScrollView style={styles.dishList} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={styles.dishList}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               {filteredFoods.map((item: any) => {
                 const healthCol = getHealthColor(item.health_label);
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={item.id}
-                    style={styles.dishRow}
+                    style={({ pressed }) => [styles.dishRow, pressed && styles.dishRowPressed]}
                     onPress={() => handlePickFood(item)}
-                    activeOpacity={0.7}
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={styles.dishRowName}>{item.name}</Text>
-                      <Text style={styles.dishRowSub}>
-                        Health: <Text style={{ color: healthCol }}>{item.health_label}</Text>
+                      <Text style={[styles.dishRowSub, { color: healthCol }]}>
+                        {item.health_label}
                       </Text>
                     </View>
-                    <Text style={[styles.dishRowScore, { color: healthCol }]}>
-                      {item.health_score}
-                    </Text>
-                  </TouchableOpacity>
+                    <View
+                      style={[
+                        styles.dishRowScorePill,
+                        { backgroundColor: getHealthSoftColor(item.health_label) },
+                      ]}
+                    >
+                      <Text style={[styles.dishRowScore, { color: healthCol }]}>
+                        {item.health_score}
+                      </Text>
+                    </View>
+                    <Ionicons name="add-circle" size={26} color={colors.accent} />
+                  </Pressable>
                 );
               })}
 
               {filteredFoods.length === 0 && (
-                <Text style={styles.noResultsText}>No matching dishes found</Text>
+                <View style={styles.modalCenter}>
+                  <Ionicons name="search-outline" size={28} color={colors.textTertiary} />
+                  <Text style={styles.noResultsText}>No matching dishes found</Text>
+                </View>
               )}
             </ScrollView>
           )}
 
           {/* Optional Remove Dish Action */}
           {onRemove && (
-            <TouchableOpacity style={styles.removeDishBtn} onPress={onRemove} activeOpacity={0.7}>
+            <PressableScale style={styles.removeDishBtn} onPress={onRemove}>
+              <Ionicons name="trash-outline" size={17} color={colors.error} />
               <Text style={styles.removeDishText}>Remove this dish from meal</Text>
-            </TouchableOpacity>
+            </PressableScale>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -197,15 +249,24 @@ export default function DishCorrectionModal({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   modalSheet: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: radii.card * 1.5,
-    borderTopRightRadius: radii.card * 1.5,
-    padding: spacing.md,
-    maxHeight: '80%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: spacing.md + 4,
+    paddingTop: spacing.sm,
+    maxHeight: '85%',
+  },
+  grabber: {
+    alignSelf: 'center',
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.borderStrong,
+    marginBottom: spacing.md,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -214,35 +275,33 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: fonts.display,
     color: colors.textPrimary,
   },
   modalSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: fonts.body,
     color: colors.textSecondary,
     marginTop: 2,
   },
   modalCloseBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  modalCloseText: {
-    fontSize: 15,
-    fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceMuted,
     borderRadius: radii.input,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md - 2,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 4,
+    marginBottom: spacing.sm,
   },
   searchInput: {
     flex: 1,
@@ -250,22 +309,19 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     color: colors.textPrimary,
   },
-  searchClearText: {
-    fontSize: 12,
-    fontFamily: fonts.bodyMedium,
-    color: colors.textSecondary,
-    paddingLeft: spacing.sm,
-  },
   dishList: {
-    maxHeight: 320,
+    maxHeight: 380,
   },
   dishRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: spacing.sm + 2,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.input,
+  },
+  dishRowPressed: {
+    backgroundColor: colors.surfaceMuted,
   },
   dishRowName: {
     fontSize: 15,
@@ -274,28 +330,35 @@ const styles = StyleSheet.create({
   },
   dishRowSub: {
     fontSize: 12,
-    fontFamily: fonts.body,
-    color: colors.textSecondary,
+    fontFamily: fonts.bodyMedium,
     marginTop: 2,
   },
+  dishRowScorePill: {
+    minWidth: 40,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+  },
   dishRowScore: {
-    fontSize: 20,
+    fontSize: 15,
     fontFamily: fonts.display,
-    marginLeft: spacing.sm,
   },
   noResultsText: {
     textAlign: 'center',
-    paddingVertical: spacing.xl,
+    marginTop: spacing.sm,
     fontFamily: fonts.body,
     color: colors.textSecondary,
   },
   removeDishBtn: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginTop: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radii.button,
-    borderWidth: 1,
-    borderColor: colors.error,
+    backgroundColor: colors.errorSoft,
   },
   removeDishText: {
     color: colors.error,

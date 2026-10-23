@@ -1,8 +1,8 @@
 /**
  * AppModal — themed replacement for Alert.alert().
  *
- * Matches the app's minimalist design system (tokens.ts): black/white buttons,
- * thin borders, no system-blue defaults. Two shapes:
+ * Matches the app's design system (tokens.ts): rounded sheet that springs in,
+ * ink/white buttons, no system-blue defaults. Two shapes:
  *
  *   • Acknowledge  — a single primary button (e.g. "OK", "Got it").
  *   • Confirm      — a secondary "Cancel" + a primary action, plus an optional
@@ -19,12 +19,13 @@
  *   ...
  *   <AppModal state={modal} onClose={() => setModal(null)} />
  */
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
-  Modal, View, Text, StyleSheet, TouchableOpacity,
+  Modal, View, Text, StyleSheet, Animated,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { colors, spacing, radii, fonts } from '../theme/tokens';
+import { colors, spacing, radii, fonts, shadows } from '../theme/tokens';
+import { IconBubble, PressableScale } from './ui';
 
 export interface ModalState {
   title: string;
@@ -46,6 +47,14 @@ interface Props {
 
 export default function AppModal({ state, onClose }: Props) {
   const visible = state !== null;
+  const pop = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      pop.setValue(0);
+      Animated.spring(pop, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 7 }).start();
+    }
+  }, [visible, pop]);
 
   const handleConfirm = () => {
     const fn = state?.onConfirm;
@@ -68,7 +77,24 @@ export default function AppModal({ state, onClose }: Props) {
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback onPress={undefined}>
-            <View style={styles.dialog}>
+            <Animated.View
+              style={[
+                styles.dialog,
+                {
+                  opacity: pop,
+                  transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
+                },
+              ]}
+            >
+              {state?.destructive ? (
+                <IconBubble
+                  name="alert-circle-outline"
+                  size={48}
+                  color={colors.error}
+                  background={colors.errorSoft}
+                  style={styles.icon}
+                />
+              ) : null}
               <Text style={styles.title}>{state?.title}</Text>
               {state?.message ? (
                 <Text style={styles.message}>{state.message}</Text>
@@ -79,15 +105,15 @@ export default function AppModal({ state, onClose }: Props) {
                 state?.confirm ? styles.actionsRow : styles.actionsStack,
               ]}>
                 {state?.confirm ? (
-                  <TouchableOpacity
+                  <PressableScale
                     style={[styles.btn, styles.btnSecondary, styles.btnFlex]}
                     onPress={onClose}
                   >
                     <Text style={styles.btnSecondaryText}>{cancelLabel}</Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ) : null}
 
-                <TouchableOpacity
+                <PressableScale
                   style={[
                     styles.btn,
                     styles.btnPrimary,
@@ -97,9 +123,9 @@ export default function AppModal({ state, onClose }: Props) {
                   onPress={handleConfirm}
                 >
                   <Text style={styles.btnPrimaryText}>{okLabel}</Text>
-                </TouchableOpacity>
+                </PressableScale>
               </View>
-            </View>
+            </Animated.View>
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
@@ -110,23 +136,26 @@ export default function AppModal({ state, onClose }: Props) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.xl,
   },
   dialog: {
     width: '100%',
+    maxWidth: 400,
     backgroundColor: colors.surface,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: radii.card + 4,
     padding: spacing.lg,
+    ...shadows.raised,
+  },
+  icon: {
+    marginBottom: spacing.md,
   },
   title: {
     fontFamily: fonts.display,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 20,
+    lineHeight: 26,
     color: colors.textPrimary,
     marginBottom: spacing.xs,
   },
@@ -156,27 +185,25 @@ const styles = StyleSheet.create({
   },
   btn: {
     borderRadius: radii.button,
-    paddingVertical: 14,
+    paddingVertical: 15,
     alignItems: 'center',
   },
   // Applied only in confirm (row) mode so the two buttons split the width.
   btnFlex: {
     flex: 1,
   },
-  // Filled black primary (matches app's buttonPrimary token)
+  // Filled ink primary (matches app's buttonPrimary token)
   btnPrimary: {
-    backgroundColor: colors.textPrimary,
+    backgroundColor: colors.ink,
   },
   btnPrimaryText: {
     color: colors.surface,
     fontFamily: fonts.bodySemiBold,
     fontSize: 15,
   },
-  // Outlined secondary (matches app's buttonSecondary token)
+  // Muted secondary
   btnSecondary: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
   },
   btnSecondaryText: {
     color: colors.textPrimary,

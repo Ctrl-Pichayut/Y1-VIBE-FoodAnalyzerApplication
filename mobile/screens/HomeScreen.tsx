@@ -3,11 +3,12 @@
  *
  * Features:
  *   • Skeleton loading placeholders with Animated opacity pulse.
- *   • Hero "Calories remaining" card (target − eaten) with Space Grotesk 48 number.
- *   • Today's Macros (Protein, Carbs, Fat) + Daily Guardrails (Fiber, Sugar, Sodium).
- *   • Quick Scan Card with both "Open Camera" and "Search & Log Manually" (Part 4.1).
- *   • 7-day chart with local-timezone YYYY-MM-DD weekday parsing (Part 1.6).
- *   • Tappable Recent Meals with meal category badges.
+ *   • Hero calorie ring (target − eaten) with animated sweep.
+ *   • Today's Macros (Protein, Carbs, Fat) with animated bars + Daily Guardrails (Fiber, Sugar, Sodium).
+ *   • Quick Scan Card with both "Scan food" and "Search" manual logging (Part 4.1).
+ *   • 7-day bar chart with local-timezone YYYY-MM-DD weekday parsing (Part 1.6); today highlighted.
+ *   • Tappable Recent Meals with meal category icons.
+ *   • Staggered fade-in of sections.
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
@@ -15,16 +16,32 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   RefreshControl,
-  Dimensions,
   Animated,
+  Easing,
 } from 'react-native';
-import { BarChart } from 'react-native-chart-kit';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors, spacing, radii, getHealthColor, fonts } from '../theme/tokens';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  colors,
+  spacing,
+  radii,
+  fonts,
+  shadows,
+  macroColors,
+} from '../theme/tokens';
 import * as api from '../services/api';
 import DishCorrectionModal from '../components/DishCorrectionModal';
+import CalorieRing from '../components/CalorieRing';
+import {
+  AnimatedBar,
+  FadeInView,
+  IconBubble,
+  IconName,
+  PressableScale,
+  mealTypeIcon,
+} from '../components/ui';
 
 function formatLocalWeekday(dateStr: string): string {
   if (!dateStr) return '';
@@ -36,12 +53,22 @@ function formatLocalWeekday(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString(undefined, { weekday: 'short' });
 }
 
+function isLocalToday(dateStr: string): boolean {
+  const parts = (dateStr || '').split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return false;
+  const now = new Date();
+  return (
+    parts[0] === now.getFullYear() && parts[1] === now.getMonth() + 1 && parts[2] === now.getDate()
+  );
+}
+
 function formatMealTypeBadge(mealType?: string): string {
   if (!mealType) return 'Meal';
   return mealType.charAt(0).toUpperCase() + mealType.slice(1);
 }
 
 export default function HomeScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const [summary, setSummary] = useState<any>(null);
   const [recentMeals, setRecentMeals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,15 +138,21 @@ export default function HomeScreen({ navigation }: any) {
     day: 'numeric',
   });
 
+  const contentPadding = {
+    paddingHorizontal: spacing.md,
+    paddingTop: insets.top + spacing.md,
+    paddingBottom: spacing.xxl,
+  };
+
   if (loading) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.md }}>
+      <ScrollView style={styles.container} contentContainerStyle={contentPadding}>
         <View style={styles.skeletonHeader}>
-          <SkeletonPulse style={{ width: 120, height: 16, marginBottom: 8, borderRadius: 4 }} />
-          <SkeletonPulse style={{ width: 220, height: 32, marginBottom: 24, borderRadius: 6 }} />
+          <SkeletonPulse style={{ width: 120, height: 14, marginBottom: 10, borderRadius: 6 }} />
+          <SkeletonPulse style={{ width: 220, height: 30, marginBottom: 24, borderRadius: 8 }} />
         </View>
-        <SkeletonCard height={140} />
-        <SkeletonCard height={160} />
+        <SkeletonCard height={190} />
+        <SkeletonCard height={150} />
         <SkeletonCard height={120} />
       </ScrollView>
     );
@@ -130,20 +163,30 @@ export default function HomeScreen({ navigation }: any) {
   const targetCalories = summary?.targets?.calories || 2000;
   const remainingCalories = targetCalories - eatenCalories;
   const isOverTarget = remainingCalories < 0;
+  const calorieRatio = targetCalories > 0 ? eatenCalories / targetCalories : 0;
+  const ringColor = isOverTarget
+    ? colors.limit
+    : calorieRatio > 0.9
+    ? colors.moderate
+    : colors.accent;
 
   // Chart data calculation
   const chartDays = weeklyReport?.daily_data || [];
-  const chartValues = chartDays.map((d: any) => d.totals?.calories || 0);
+  const chartValues: number[] = chartDays.map((d: any) => Math.round(d.totals?.calories || 0));
   const hasChartData = chartValues.some((v: number) => v > 0);
 
   return (
     <>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.xxl }}
+        contentContainerStyle={contentPadding}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+            progressViewOffset={insets.top}
             onRefresh={() => {
               setRefreshing(true);
               loadData(true);
@@ -152,231 +195,215 @@ export default function HomeScreen({ navigation }: any) {
         }
       >
         {/* 1. Greeting & Date Header */}
-        <View style={styles.headerBlock}>
-          <Text style={styles.appTitle}>Food Intelligence</Text>
-          <Text style={styles.greeting}>{greeting}</Text>
-          <Text style={styles.dateText}>{dateFormatted}</Text>
-        </View>
+        <FadeInView style={styles.headerBlock}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.dateText}>{dateFormatted}</Text>
+            <Text style={styles.greeting}>{greeting}</Text>
+          </View>
+          <PressableScale
+            style={styles.avatarBtn}
+            onPress={() => navigation.navigate('Profile')}
+            scaleTo={0.9}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile"
+          >
+            <Ionicons name="person" size={20} color={colors.accent} />
+          </PressableScale>
+        </FadeInView>
 
         {/* 2. Hero Calories Remaining Card (if logged in) */}
         {loggedIn && summary && (
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Calories Remaining</Text>
-            <View style={styles.calorieHeroRow}>
-              <Text
-                style={[
-                  styles.calorieHeroNumber,
-                  isOverTarget && { color: colors.limit },
-                ]}
-                maxFontSizeMultiplier={1.3}
-              >
-                {Math.abs(remainingCalories)}
-              </Text>
-              <View style={styles.calorieHeroSub}>
-                <Text style={[styles.calorieHeroCaption, isOverTarget && { color: colors.limit }]}>
-                  {isOverTarget
-                    ? `kcal over goal (${targetCalories})`
-                    : `kcal left of ${targetCalories}`}
+          <FadeInView delay={60} style={styles.card}>
+            <View style={styles.heroRow}>
+              <CalorieRing ratio={calorieRatio} color={ringColor} size={150} strokeWidth={13}>
+                <Text
+                  style={[styles.ringNumber, isOverTarget && { color: colors.limit }]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {Math.abs(remainingCalories)}
                 </Text>
-                <Text style={styles.calorieEatenCaption}>
-                  {eatenCalories} kcal eaten today
-                </Text>
+                <Text style={styles.ringCaption}>{isOverTarget ? 'kcal over' : 'kcal left'}</Text>
+              </CalorieRing>
+
+              <View style={styles.heroStats}>
+                <HeroStat icon="flag-outline" label="Daily goal" value={`${targetCalories}`} />
+                <HeroStat icon="restaurant-outline" label="Eaten" value={`${eatenCalories}`} />
+                <HeroStat
+                  icon="fast-food-outline"
+                  label="Meals today"
+                  value={`${summary.meals_count || 0}`}
+                  unit=""
+                />
               </View>
             </View>
-
-            {/* Thin full-width calorie progress bar */}
-            <View style={styles.calorieProgressBg}>
-              <View
-                style={[
-                  styles.calorieProgressFill,
-                  {
-                    width: `${Math.min(100, Math.round((eatenCalories / targetCalories) * 100))}%`,
-                    backgroundColor: isOverTarget
-                      ? colors.limit
-                      : eatenCalories / targetCalories > 0.9
-                      ? colors.moderate
-                      : colors.accent,
-                  },
-                ]}
-              />
-            </View>
-          </View>
+          </FadeInView>
         )}
 
         {/* 3. Daily Macros & Guardrails Card (if logged in) */}
         {loggedIn && summary && (
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Today's Macros</Text>
-            <View style={styles.macroProgressGrid}>
-              <ProgressItem
-                label="Protein"
-                current={Math.round(summary.totals?.protein || 0)}
-                target={summary.targets?.protein || 50}
-                unit="g"
-                type="protein"
-              />
-              <ProgressItem
-                label="Carbs"
-                current={Math.round(summary.totals?.carbs || 0)}
-                target={summary.targets?.carbs || 300}
-                unit="g"
-                type="carbs"
-              />
-              <ProgressItem
-                label="Fat"
-                current={Math.round(summary.totals?.fat || 0)}
-                target={summary.targets?.fat || 65}
-                unit="g"
-                type="fat"
-              />
-            </View>
+          <FadeInView delay={120} style={styles.card}>
+            <Text style={styles.sectionLabel}>Today's macros</Text>
+            <ProgressItem
+              label="Protein"
+              current={Math.round(summary.totals?.protein || 0)}
+              target={summary.targets?.protein || 50}
+              unit="g"
+              type="protein"
+            />
+            <ProgressItem
+              label="Carbs"
+              current={Math.round(summary.totals?.carbs || 0)}
+              target={summary.targets?.carbs || 300}
+              unit="g"
+              type="carbs"
+            />
+            <ProgressItem
+              label="Fat"
+              current={Math.round(summary.totals?.fat || 0)}
+              target={summary.targets?.fat || 65}
+              unit="g"
+              type="fat"
+            />
 
             {/* Micronutrients / Guardrails Row (Fiber, Sugar, Sodium) */}
             <View style={styles.microSummaryRow}>
-              <View style={styles.microSummaryItem}>
-                <Text style={styles.microSummaryLabel}>Fiber</Text>
-                <Text style={styles.microSummaryValue}>
-                  {Math.round(summary.totals?.fiber || 0)} / {summary.targets?.fiber || 28}g
-                </Text>
-              </View>
-              <View style={styles.microSummaryItem}>
-                <Text style={styles.microSummaryLabel}>Sugar</Text>
-                <Text
-                  style={[
-                    styles.microSummaryValue,
-                    (summary.totals?.sugar || 0) > (summary.targets?.sugar || 50) && {
-                      color: colors.limit,
-                    },
-                  ]}
-                >
-                  {Math.round(summary.totals?.sugar || 0)} / {summary.targets?.sugar || 50}g
-                </Text>
-              </View>
-              <View style={styles.microSummaryItem}>
-                <Text style={styles.microSummaryLabel}>Sodium</Text>
-                <Text
-                  style={[
-                    styles.microSummaryValue,
-                    (summary.totals?.sodium_mg || 0) > (summary.targets?.sodium_mg || 2300) && {
-                      color: colors.limit,
-                    },
-                  ]}
-                >
-                  {Math.round(summary.totals?.sodium_mg || 0)} / {summary.targets?.sodium_mg || 2300}mg
-                </Text>
-              </View>
+              <MicroTile
+                label="Fiber"
+                value={Math.round(summary.totals?.fiber || 0)}
+                target={summary.targets?.fiber || 28}
+                unit="g"
+              />
+              <MicroTile
+                label="Sugar"
+                value={Math.round(summary.totals?.sugar || 0)}
+                target={summary.targets?.sugar || 50}
+                unit="g"
+                warnWhenOver
+              />
+              <MicroTile
+                label="Sodium"
+                value={Math.round(summary.totals?.sodium_mg || 0)}
+                target={summary.targets?.sodium_mg || 2300}
+                unit="mg"
+                warnWhenOver
+              />
             </View>
-
-            <Text style={styles.mealsToday}>
-              {summary.meals_count || 0} meal{(summary.meals_count || 0) !== 1 ? 's' : ''} logged today
-            </Text>
-          </View>
+          </FadeInView>
         )}
 
         {/* 4. Quick Scan & Manual Log Card */}
-        <View style={styles.scanCard}>
-          <Text style={styles.scanCardTitle}>Log a Meal</Text>
-          <Text style={styles.scanCardBody}>
-            Take a photo to detect dishes with AI, or search our verified food catalog to log manually.
-          </Text>
-          <TouchableOpacity
-            style={styles.scanBtn}
-            onPress={() => navigation.navigate('ScanTab')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.scanBtnText}>Open Camera</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.manualLogBtn}
-            onPress={() => setManualLogModalOpen(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.manualLogBtnText}>Search & Log Manually</Text>
-          </TouchableOpacity>
-        </View>
+        <FadeInView delay={180} style={styles.scanCard}>
+          <View style={styles.scanCardDecor} pointerEvents="none" />
+          <View style={styles.scanCardTop}>
+            <IconBubble name="sparkles" size={44} color="#BFE3BF" background="rgba(255,255,255,0.1)" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.scanCardTitle}>Log a meal</Text>
+              <Text style={styles.scanCardBody}>
+                Snap a photo for AI detection, or search the verified catalog.
+              </Text>
+            </View>
+          </View>
+          <View style={styles.scanBtnRow}>
+            <PressableScale
+              style={styles.scanBtn}
+              onPress={() => navigation.navigate('ScanTab')}
+            >
+              <Ionicons name="camera" size={18} color={colors.ink} />
+              <Text style={styles.scanBtnText}>Scan food</Text>
+            </PressableScale>
+            <PressableScale
+              style={styles.manualLogBtn}
+              onPress={() => setManualLogModalOpen(true)}
+            >
+              <Ionicons name="search" size={17} color={colors.textOnDark} />
+              <Text style={styles.manualLogBtnText}>Search</Text>
+            </PressableScale>
+          </View>
+        </FadeInView>
 
         {/* Not Logged In Promo Card */}
         {!loggedIn && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Track Your Nutrition</Text>
-            <Text style={styles.cardBody}>
-              Create an account or log in to save your meals, configure personalized TDEE targets, and review your weekly trend.
-            </Text>
-            <TouchableOpacity
+          <FadeInView delay={240} style={styles.card}>
+            <View style={styles.promoRow}>
+              <IconBubble name="stats-chart" size={44} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>Track your nutrition</Text>
+                <Text style={styles.cardBody}>
+                  Create an account to save meals, get personalized daily targets, and see your
+                  weekly trend.
+                </Text>
+              </View>
+            </View>
+            <PressableScale
               style={styles.outlineBtn}
               onPress={() => navigation.navigate('Profile')}
-              activeOpacity={0.7}
             >
-              <Text style={styles.outlineBtnText}>Get Started / Log In</Text>
-            </TouchableOpacity>
-          </View>
+              <Text style={styles.outlineBtnText}>Get started</Text>
+              <Ionicons name="arrow-forward" size={16} color={colors.textOnDark} />
+            </PressableScale>
+          </FadeInView>
         )}
 
         {/* 5. 7-Day Calorie Trend Chart (Logged in) */}
         {loggedIn && (
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>7-Day Calorie Trend</Text>
+          <FadeInView delay={240} style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>Last 7 days</Text>
+              {hasChartData && (
+                <Text style={styles.chartTargetLegend}>
+                  Goal {targetCalories} kcal
+                </Text>
+              )}
+            </View>
             {hasChartData ? (
-              <BarChart
-                data={{
-                  labels: chartDays.map((d: any) => formatLocalWeekday(d.date)),
-                  datasets: [{ data: chartValues }],
-                }}
-                width={Dimensions.get('window').width - spacing.md * 4}
-                height={200}
-                yAxisLabel=""
-                yAxisSuffix=""
-                chartConfig={{
-                  backgroundColor: colors.surface,
-                  backgroundGradientFrom: colors.surface,
-                  backgroundGradientTo: colors.surface,
-                  decimalPlaces: 0,
-                  color: (opacity = 1) => `rgba(13, 13, 13, ${opacity})`,
-                  labelColor: () => colors.textSecondary,
-                  barPercentage: 0.5,
-                  propsForLabels: {
-                    fontFamily: fonts.body,
-                    fontSize: 10,
-                  },
-                }}
-                style={{ marginVertical: 8, borderRadius: radii.card, marginLeft: -12 }}
-                showValuesOnTopOfBars
+              <WeekChart
+                labels={chartDays.map((d: any) => formatLocalWeekday(d.date))}
+                todayFlags={chartDays.map((d: any) => isLocalToday(d.date))}
+                values={chartValues}
+                target={targetCalories}
               />
             ) : (
               <View style={styles.chartEmptyBox}>
-                <Text style={styles.chartEmptyText}>
-                  No calorie data recorded this week yet.
-                </Text>
+                <IconBubble name="bar-chart-outline" size={44} color={colors.textSecondary} background={colors.surfaceMuted} />
+                <Text style={styles.chartEmptyText}>No meals this week yet</Text>
                 <Text style={styles.chartEmptySub}>
-                  Scan or log meals to build your weekly nutrition trend.
+                  Scan or log meals to build your weekly trend.
                 </Text>
               </View>
             )}
-          </View>
+          </FadeInView>
         )}
 
         {/* 6. Recent Meals */}
         {recentMeals.length > 0 && (
-          <View style={{ marginTop: spacing.xs }}>
+          <FadeInView delay={300} style={{ marginTop: spacing.xs }}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>Recent Meals</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('History')} activeOpacity={0.7}>
-                <Text style={styles.seeAll}>See All</Text>
-              </TouchableOpacity>
+              <Text style={styles.sectionHeading}>Recent meals</Text>
+              <PressableScale
+                onPress={() => navigation.navigate('History')}
+                style={styles.seeAllBtn}
+                hitSlop={8}
+              >
+                <Text style={styles.seeAll}>See all</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+              </PressableScale>
             </View>
-            {recentMeals.map((meal: any) => (
-              <RecentMealCard
-                key={meal.id}
-                meal={meal}
-                onPress={() =>
-                  navigation.navigate('History', {
-                    screen: 'MealDetail',
-                    params: { meal },
-                  })
-                }
-              />
-            ))}
-          </View>
+            <View style={styles.listCard}>
+              {recentMeals.map((meal: any, i: number) => (
+                <RecentMealRow
+                  key={meal.id}
+                  meal={meal}
+                  isLast={i === recentMeals.length - 1}
+                  onPress={() =>
+                    navigation.navigate('History', {
+                      screen: 'MealDetail',
+                      params: { meal },
+                    })
+                  }
+                />
+              ))}
+            </View>
+          </FadeInView>
         )}
       </ScrollView>
 
@@ -393,6 +420,34 @@ export default function HomeScreen({ navigation }: any) {
 }
 
 // ---------------------------------------------------------------------------
+// Hero stat row
+// ---------------------------------------------------------------------------
+function HeroStat({
+  icon,
+  label,
+  value,
+  unit = 'kcal',
+}: {
+  icon: IconName;
+  label: string;
+  value: string;
+  unit?: string;
+}) {
+  return (
+    <View style={styles.heroStat}>
+      <IconBubble name={icon} size={32} color={colors.textSecondary} background={colors.surfaceMuted} />
+      <View>
+        <Text style={styles.heroStatLabel}>{label}</Text>
+        <Text style={styles.heroStatValue}>
+          {value}
+          {unit ? <Text style={styles.heroStatUnit}> {unit}</Text> : null}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Macro Progress Item Component
 // ---------------------------------------------------------------------------
 interface ProgressItemProps {
@@ -405,77 +460,201 @@ interface ProgressItemProps {
 
 function ProgressItem({ label, current, target, unit, type }: ProgressItemProps) {
   const ratio = target > 0 ? current / target : 0;
-  const pct = Math.min(100, Math.round(ratio * 100));
-  const isOver = current > target;
+  const pct = Math.round(ratio * 100);
 
-  let barColor = colors.accent;
+  let barColor = macroColors[type];
   if (type !== 'protein') {
     if (ratio > 1.1) {
       barColor = colors.limit;
     } else if (ratio > 1.0) {
       barColor = colors.moderate;
-    } else {
-      barColor = colors.accent;
     }
   }
 
   return (
     <View style={styles.progressItem}>
-      <Text style={styles.progressValue}>{current}</Text>
-      <Text style={styles.progressTarget}>
-        / {target} {unit}
-      </Text>
-
-      {/* Progress Bar */}
-      <View style={styles.progressBarBg}>
-        <View style={[styles.progressBarFill, { width: `${pct}%`, backgroundColor: barColor }]} />
+      <View style={styles.progressTopRow}>
+        <View style={styles.progressLabelRow}>
+          <View style={[styles.progressDot, { backgroundColor: macroColors[type] }]} />
+          <Text style={styles.progressLabel}>{label}</Text>
+        </View>
+        <Text style={styles.progressValue}>
+          {current}
+          <Text style={styles.progressTarget}>
+            {' '}/ {target}
+            {unit}
+          </Text>
+          {current > target ? (
+            <Text style={[styles.progressTarget, { color: barColor }]}>  {pct}%</Text>
+          ) : null}
+        </Text>
       </View>
+      <AnimatedBar ratio={ratio} color={barColor} height={8} />
+    </View>
+  );
+}
 
-      <Text style={styles.progressLabel}>
-        {label} {isOver && <Text style={{ color: barColor }}>({pct}%)</Text>}
+function MicroTile({
+  label,
+  value,
+  target,
+  unit,
+  warnWhenOver,
+}: {
+  label: string;
+  value: number;
+  target: number;
+  unit: string;
+  warnWhenOver?: boolean;
+}) {
+  const over = warnWhenOver && value > target;
+  return (
+    <View style={[styles.microTile, over && { backgroundColor: colors.limitSoft }]}>
+      <Text style={[styles.microSummaryLabel, over && { color: colors.limit }]}>{label}</Text>
+      <Text style={[styles.microSummaryValue, over && { color: colors.limit }]} numberOfLines={1}>
+        {value}
+        <Text style={styles.microSummaryTarget}> {unit}</Text>
+      </Text>
+      <Text style={styles.microSummaryTarget} numberOfLines={1}>
+        of {target}
+        {unit}
       </Text>
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Recent Meal Card Component
+// 7-day bar chart (plain Views so bars can animate)
 // ---------------------------------------------------------------------------
-function RecentMealCard({ meal, onPress }: { meal: any; onPress: () => void }) {
+const CHART_HEIGHT = 130;
+
+function WeekChart({
+  labels,
+  values,
+  todayFlags,
+  target,
+}: {
+  labels: string[];
+  values: number[];
+  todayFlags: boolean[];
+  target: number;
+}) {
+  const max = Math.max(target, ...values, 1) * 1.1;
+  const targetY = (target / max) * CHART_HEIGHT;
+
+  return (
+    <View style={styles.chartWrap}>
+      <View style={[styles.chartTargetLine, { bottom: targetY + 18 }]} pointerEvents="none" />
+      <View style={styles.chartBars}>
+        {values.map((v, i) => (
+          <ChartBar
+            key={i}
+            label={labels[i]}
+            value={v}
+            height={(v / max) * CHART_HEIGHT}
+            highlight={todayFlags[i]}
+            over={v > target}
+            delay={i * 50}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function ChartBar({
+  label,
+  value,
+  height,
+  highlight,
+  over,
+  delay,
+}: {
+  label: string;
+  value: number;
+  height: number;
+  highlight: boolean;
+  over: boolean;
+  delay: number;
+}) {
+  const grow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(grow, {
+      toValue: 1,
+      duration: 600,
+      delay,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [grow, delay]);
+
+  const barColor = over ? colors.moderate : highlight ? colors.accent : '#C9DCC5';
+
+  return (
+    <View style={styles.chartCol}>
+      <Text style={[styles.chartValue, highlight && { color: colors.textPrimary }]} numberOfLines={1}>
+        {value > 0 ? value : ''}
+      </Text>
+      <View style={styles.chartBarTrack}>
+        <Animated.View
+          style={{
+            width: '100%',
+            borderRadius: 8,
+            backgroundColor: barColor,
+            height: grow.interpolate({ inputRange: [0, 1], outputRange: [0, Math.max(value > 0 ? 6 : 0, height)] }),
+          }}
+        />
+      </View>
+      <Text style={[styles.chartLabel, highlight && styles.chartLabelToday]}>{label}</Text>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recent Meal Row Component
+// ---------------------------------------------------------------------------
+function RecentMealRow({
+  meal,
+  onPress,
+  isLast,
+}: {
+  meal: any;
+  onPress: () => void;
+  isLast: boolean;
+}) {
   const foods = meal.foods_json || [];
   const time = new Date(meal.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
   });
   const totalCal = meal.totals_json?.calories ? Math.round(meal.totals_json.calories) : 0;
+  const names = foods.map((f: any) => f.name).filter(Boolean);
+  const title = names.length > 0 ? names.slice(0, 2).join(', ') : 'Meal';
+  const extra = names.length > 2 ? ` +${names.length - 2}` : '';
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
-      <View style={styles.mealHeader}>
-        <View style={styles.mealTimeRow}>
-          <Text style={styles.mealTime}>{time}</Text>
-          {meal.meal_type && (
-            <View style={styles.mealTypeBadge}>
-              <Text style={styles.mealTypeBadgeText}>{formatMealTypeBadge(meal.meal_type)}</Text>
-            </View>
-          )}
-        </View>
-        <Text style={styles.mealCal}>{totalCal} kcal</Text>
+    <PressableScale
+      style={[styles.mealRow, !isLast && styles.mealRowDivider]}
+      onPress={onPress}
+      scaleTo={0.98}
+    >
+      <IconBubble name={mealTypeIcon(meal.meal_type)} size={42} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.mealTitle} numberOfLines={1}>
+          {title}
+          <Text style={styles.mealExtra}>{extra}</Text>
+        </Text>
+        <Text style={styles.mealSub}>
+          {formatMealTypeBadge(meal.meal_type)} · {time}
+        </Text>
       </View>
-      {foods.slice(0, 3).map((f: any, i: number) => (
-        <View key={i} style={styles.mealFoodRow}>
-          <Text style={styles.mealFoodName} numberOfLines={1}>
-            {f.name}
-          </Text>
-          <Text style={[styles.mealFoodScore, { color: getHealthColor(f.health_label) }]}>
-            {f.health_score}
-          </Text>
-        </View>
-      ))}
-      {foods.length > 3 && (
-        <Text style={styles.moreText}>+{foods.length - 3} more items</Text>
-      )}
-    </TouchableOpacity>
+      <Text style={styles.mealCal}>
+        {totalCal}
+        <Text style={styles.mealCalUnit}> kcal</Text>
+      </Text>
+      <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+    </PressableScale>
   );
 }
 
@@ -483,13 +662,13 @@ function RecentMealCard({ meal, onPress }: { meal: any; onPress: () => void }) {
 // Skeleton Pulse Placeholder Components
 // ---------------------------------------------------------------------------
 function SkeletonPulse({ style }: { style: any }) {
-  const opacity = useRef(new Animated.Value(0.35)).current;
+  const opacity = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.75, duration: 800, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.35, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.9, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.4, duration: 800, useNativeDriver: true }),
       ])
     );
     loop.start();
@@ -502,9 +681,9 @@ function SkeletonPulse({ style }: { style: any }) {
 function SkeletonCard({ height = 120 }: { height?: number }) {
   return (
     <View style={[styles.card, { height, justifyContent: 'space-around' }]}>
-      <SkeletonPulse style={{ width: 100, height: 14, borderRadius: 4 }} />
-      <SkeletonPulse style={{ width: '80%', height: 24, borderRadius: 6 }} />
-      <SkeletonPulse style={{ width: '50%', height: 12, borderRadius: 4 }} />
+      <SkeletonPulse style={{ width: 100, height: 12, borderRadius: 6 }} />
+      <SkeletonPulse style={{ width: '80%', height: 24, borderRadius: 8 }} />
+      <SkeletonPulse style={{ width: '50%', height: 12, borderRadius: 6 }} />
     </View>
   );
 }
@@ -518,319 +697,392 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   headerBlock: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-  },
-  appTitle: {
-    fontSize: 28,
-    fontFamily: fonts.display,
-    color: colors.textPrimary,
-  },
-  greeting: {
-    fontSize: 16,
-    fontFamily: fonts.bodyMedium,
-    color: colors.textSecondary,
-    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
   },
   dateText: {
     fontSize: 13,
-    fontFamily: fonts.body,
+    fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
+  },
+  greeting: {
+    fontSize: 30,
+    lineHeight: 36,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
     marginTop: 2,
   },
+  avatarBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   skeletonHeader: {
-    marginTop: spacing.md,
     marginBottom: spacing.md,
-  },
-
-  // Scan Card
-  scanCard: {
-    backgroundColor: colors.textPrimary,
-    borderRadius: radii.card,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  scanCardTitle: {
-    fontSize: 22,
-    fontFamily: fonts.display,
-    color: '#FFFFFF',
-    marginBottom: spacing.xs,
-  },
-  scanCardBody: {
-    fontSize: 14,
-    fontFamily: fonts.body,
-    color: 'rgba(255,255,255,0.75)',
-    lineHeight: 20,
-    marginBottom: spacing.md,
-  },
-  scanBtn: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: radii.button,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  scanBtnText: {
-    fontSize: 15,
-    fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
-  },
-  manualLogBtn: {
-    marginTop: spacing.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    borderRadius: radii.button,
-    paddingVertical: 11,
-    alignItems: 'center',
-  },
-  manualLogBtnText: {
-    fontSize: 14,
-    fontFamily: fonts.bodySemiBold,
-    color: '#FFFFFF',
   },
 
   // Generic Card
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.md + 4,
     marginBottom: spacing.md,
+    ...shadows.card,
   },
   cardTitle: {
     fontSize: 18,
     fontFamily: fonts.display,
     color: colors.textPrimary,
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   cardBody: {
     fontSize: 14,
     fontFamily: fonts.body,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  promoRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
     marginBottom: spacing.md,
   },
   outlineBtn: {
-    borderWidth: 1,
-    borderColor: colors.textPrimary,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: colors.ink,
     borderRadius: radii.button,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   outlineBtnText: {
     fontSize: 15,
     fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
+    color: colors.textOnDark,
   },
 
-  // Hero Calorie Block
+  // Hero
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md + 4,
+  },
+  ringNumber: {
+    fontSize: 34,
+    lineHeight: 38,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+  },
+  ringCaption: {
+    fontSize: 12,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textSecondary,
+  },
+  heroStats: {
+    flex: 1,
+    gap: spacing.md - 2,
+  },
+  heroStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 2,
+  },
+  heroStatLabel: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+  },
+  heroStatValue: {
+    fontSize: 17,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+  },
+  heroStatUnit: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+  },
+
+  // Section labels
   sectionLabel: {
     fontSize: 12,
     fontFamily: fonts.bodySemiBold,
     color: colors.textSecondary,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm + 4,
   },
-  calorieHeroRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginVertical: spacing.xs,
-  },
-  calorieHeroNumber: {
-    fontSize: 48,
-    fontFamily: fonts.display,
-    color: colors.textPrimary,
-    lineHeight: 52,
-    marginRight: spacing.md,
-  },
-  calorieHeroSub: {
-    flex: 1,
-  },
-  calorieHeroCaption: {
-    fontSize: 14,
-    fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
-  },
-  calorieEatenCaption: {
-    fontSize: 12,
-    fontFamily: fonts.body,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  calorieProgressBg: {
-    width: '100%',
-    height: 6,
-    backgroundColor: colors.border,
-    borderRadius: 3,
-    marginTop: spacing.sm,
-    overflow: 'hidden',
-  },
-  calorieProgressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-
-  // Macro Progress Grid
-  macroProgressGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.xs,
-  },
-  progressItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  progressValue: {
-    fontSize: 22,
+  sectionHeading: {
+    fontSize: 18,
     fontFamily: fonts.display,
     color: colors.textPrimary,
   },
-  progressTarget: {
-    fontSize: 11,
-    fontFamily: fonts.body,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  progressBarBg: {
-    width: '85%',
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    marginVertical: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: 4,
-    borderRadius: 2,
-  },
-  progressLabel: {
-    fontSize: 12,
-    fontFamily: fonts.bodyMedium,
-    color: colors.textSecondary,
-  },
-  microSummaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  microSummaryItem: {
-    alignItems: 'center',
-  },
-  microSummaryLabel: {
-    fontSize: 11,
-    fontFamily: fonts.body,
-    color: colors.textSecondary,
-  },
-  microSummaryValue: {
-    fontSize: 13,
-    fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
-    marginTop: 2,
-  },
-  mealsToday: {
-    fontSize: 12,
-    fontFamily: fonts.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.xs + 2,
-  },
-
-  // Chart Empty State
-  chartEmptyBox: {
-    paddingVertical: spacing.xl,
-    alignItems: 'center',
-  },
-  chartEmptyText: {
-    fontSize: 14,
-    fontFamily: fonts.bodyMedium,
-    color: colors.textPrimary,
-  },
-  chartEmptySub: {
-    fontSize: 12,
-    fontFamily: fonts.body,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-
-  // Section Header
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  seeAll: {
-    fontSize: 13,
-    fontFamily: fonts.bodySemiBold,
-    color: colors.textPrimary,
-    textDecorationLine: 'underline',
-  },
-
-  // Meal Cards
-  mealHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  mealTimeRow: {
+  seeAllBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 2,
+    paddingVertical: 4,
   },
-  mealTime: {
+  seeAll: {
+    fontSize: 14,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.accent,
+  },
+
+  // Macro progress
+  progressItem: {
+    marginBottom: spacing.md - 2,
+  },
+  progressTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 6,
+  },
+  progressLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  progressDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  progressLabel: {
+    fontSize: 14,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textPrimary,
+  },
+  progressValue: {
+    fontSize: 16,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+  },
+  progressTarget: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+  },
+  microSummaryRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  microTile: {
+    flex: 1,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.input,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  microSummaryLabel: {
+    fontSize: 11,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textSecondary,
+  },
+  microSummaryValue: {
+    fontSize: 15,
+    fontFamily: fonts.display,
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+  microSummaryTarget: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+  },
+
+  // Scan Card
+  scanCard: {
+    backgroundColor: colors.ink,
+    borderRadius: radii.card + 4,
+    padding: spacing.lg - 4,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+    ...shadows.raised,
+  },
+  scanCardDecor: {
+    position: 'absolute',
+    right: -60,
+    top: -60,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(62, 142, 67, 0.25)',
+  },
+  scanCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md + 4,
+  },
+  scanCardTitle: {
+    fontSize: 20,
+    fontFamily: fonts.display,
+    color: colors.textOnDark,
+  },
+  scanCardBody: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  scanBtnRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  scanBtn: {
+    flex: 1.4,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radii.button,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanBtnText: {
+    fontSize: 15,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.ink,
+  },
+  manualLogBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: radii.button,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  manualLogBtnText: {
+    fontSize: 15,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textOnDark,
+  },
+
+  // Chart
+  chartTargetLegend: {
+    fontSize: 12,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm + 4,
+  },
+  chartWrap: {
+    position: 'relative',
+  },
+  chartTargetLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    borderTopWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.borderStrong,
+  },
+  chartBars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  chartCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  chartValue: {
+    fontSize: 10,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textTertiary,
+    marginBottom: 4,
+  },
+  chartBarTrack: {
+    width: '70%',
+    maxWidth: 28,
+    height: CHART_HEIGHT,
+    justifyContent: 'flex-end',
+  },
+  chartLabel: {
+    fontSize: 11,
+    fontFamily: fonts.bodyMedium,
+    color: colors.textSecondary,
+    marginTop: 6,
+    height: 12,
+    lineHeight: 12,
+  },
+  chartLabelToday: {
+    fontFamily: fonts.bodySemiBold,
+    color: colors.accent,
+  },
+  chartEmptyBox: {
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+  },
+  chartEmptyText: {
+    fontSize: 15,
+    fontFamily: fonts.bodySemiBold,
+    color: colors.textPrimary,
+    marginTop: spacing.sm + 4,
+  },
+  chartEmptySub: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+
+  // Recent meals
+  listCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    paddingHorizontal: spacing.md,
+    ...shadows.card,
+  },
+  mealRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+    paddingVertical: spacing.md - 2,
+  },
+  mealRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderStrong,
+  },
+  mealTitle: {
     fontSize: 15,
     fontFamily: fonts.bodySemiBold,
     color: colors.textPrimary,
   },
-  mealTypeBadge: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  mealTypeBadgeText: {
-    fontSize: 10,
-    fontFamily: fonts.bodySemiBold,
+  mealExtra: {
+    fontFamily: fonts.bodyMedium,
     color: colors.textSecondary,
-    textTransform: 'uppercase',
+  },
+  mealSub: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   mealCal: {
     fontSize: 16,
     fontFamily: fonts.display,
     color: colors.textPrimary,
   },
-  mealFoodRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  mealFoodName: {
-    fontSize: 14,
-    fontFamily: fonts.body,
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  mealFoodScore: {
-    fontSize: 15,
-    fontFamily: fonts.display,
-    marginLeft: spacing.sm,
-  },
-  moreText: {
-    fontSize: 12,
+  mealCalUnit: {
+    fontSize: 11,
     fontFamily: fonts.body,
     color: colors.textSecondary,
-    marginTop: 4,
   },
 });
